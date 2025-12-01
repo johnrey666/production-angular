@@ -1,129 +1,302 @@
-import { Component, OnInit, PLATFORM_ID, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { isPlatformBrowser } from '@angular/common';
-import { trigger, transition, style, animate, stagger, query } from '@angular/animations';
+import { SupabaseService, Material } from '../services/supabase.service';
 
-interface RawMaterial {
+// Define local interface that matches our HTML form
+interface LocalMaterial {
+  id?: string;
   sku: string;
   description: string;
   unitCost: number;
   costPerKg: number;
   category: string;
   currentStock: number;
-  minStockLevel: number;
+  createdAt?: string;
 }
 
 @Component({
   selector: 'app-raw-materials',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DecimalPipe],
   templateUrl: './raw-materials.html',
-  styleUrls: ['./raw-materials.css'],
-  animations: [
-    trigger('fadeInUp', [
-      transition(':enter', [
-        style({ opacity: 0, transform: 'translateY(30px)' }),
-        animate('600ms cubic-bezier(0.4, 0, 0.2, 1)', 
-          style({ opacity: 1, transform: 'translateY(0)' }))
-      ])
-    ]),
-    trigger('slideIn', [
-      transition(':enter', [
-        style({ opacity: 0, transform: 'translateX(-20px)' }),
-        animate('400ms cubic-bezier(0.4, 0, 0.2, 1)', 
-          style({ opacity: 1, transform: 'translateX(0)' }))
-      ])
-    ])
-  ]
+  styleUrls: ['./raw-materials.css']
 })
 export class RawMaterialsComponent implements OnInit {
-  materials: RawMaterial[] = [];
-  private platformId = inject(PLATFORM_ID);
+  materials: LocalMaterial[] = [];
+  displayedMaterials: LocalMaterial[] = [];
+  isLoading: boolean = false;
+  errorMessage: string = '';
+  
+  // Modal properties
+  showModal: boolean = false;
+  isEditing: boolean = false;
+  currentMaterial: LocalMaterial = this.createEmptyMaterial();
+  
+  // Pagination properties
+  currentPage: number = 1;
+  itemsPerPage: number = 8;
+  totalPages: number = 1;
+  startIndex: number = 0;
+  endIndex: number = 0;
+
+  constructor(
+    private supabase: SupabaseService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {
     this.loadMaterials();
   }
 
-  loadMaterials() {
-    // Load from localStorage or API
-    const savedData = isPlatformBrowser(this.platformId) ? localStorage.getItem('ctk_mats') : null;
-    if (savedData) {
-      this.materials = JSON.parse(savedData);
-    } else {
-      // Sample data
-      this.materials = [
-        { sku: "4362771", description: "AJI Umami Seasoning 2.5kg×8", unitCost: 459.99, costPerKg: 184, category: "Seasoning", currentStock: 150, minStockLevel: 50 },
-        { sku: "3498918", description: "Pork Belly Skinless", unitCost: 310, costPerKg: 310, category: "Pork", currentStock: 85, minStockLevel: 100 },
-        { sku: "4236408", description: "Cooking Oil 17kg", unitCost: 1510, costPerKg: 88.8, category: "Oil", currentStock: 200, minStockLevel: 30 },
-        { sku: "5129341", description: "Sugar White Refined", unitCost: 68, costPerKg: 68, category: "Sweetener", currentStock: 300, minStockLevel: 100 },
-        { sku: "6678210", description: "Soy Sauce 5L", unitCost: 285, costPerKg: 57, category: "Condiment", currentStock: 75, minStockLevel: 25 }
-      ];
-      this.saveToStorage();
+  async loadMaterials() {
+    this.isLoading = true;
+    this.errorMessage = '';
+    
+    // Force immediate UI update
+    this.cdr.detectChanges();
+    
+    // Add a small delay to ensure UI updates
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    try {
+      const data = await this.supabase.getMaterials();
+      
+      if (data && Array.isArray(data)) {
+        this.materials = data.map((item: Material) => ({
+          id: item.id,
+          sku: item.sku || '',
+          description: item.description || '',
+          unitCost: item.unit_cost || 0,
+          costPerKg: item.cost_per_kg || 0,
+          category: item.category || '',
+          currentStock: item.current_stock || 0,
+          createdAt: item.created_at
+        }));
+        
+        this.updatePagination();
+      } else {
+        this.materials = [];
+        this.displayedMaterials = [];
+      }
+    } catch (error: any) {
+      this.errorMessage = 'Failed to load materials. Please try again.';
+      this.materials = [];
+      this.displayedMaterials = [];
+    } finally {
+      this.isLoading = false;
+      
+      // Force UI update after loading completes
+      this.cdr.detectChanges();
     }
   }
 
-  addMaterial() {
-    this.materials.push({
+  // Pagination methods
+  updatePagination() {
+    this.totalPages = Math.ceil(this.materials.length / this.itemsPerPage);
+    if (this.currentPage > this.totalPages && this.totalPages > 0) {
+      this.currentPage = this.totalPages;
+    }
+    
+    this.startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, this.materials.length);
+    this.displayedMaterials = this.materials.slice(this.startIndex, this.endIndex);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+      this.updatePagination();
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.updatePagination();
+    }
+  }
+
+  // Create empty material template
+  createEmptyMaterial(): LocalMaterial {
+    return {
       sku: '',
       description: '',
       unitCost: 0,
       costPerKg: 0,
       category: '',
-      currentStock: 0,
-      minStockLevel: 0
-    });
+      currentStock: 0
+    };
   }
 
-  saveMaterial(index: number) {
-    this.saveToStorage();
+  // Open modal for adding new material
+  openAddModal() {
+    this.currentMaterial = this.createEmptyMaterial();
+    this.isEditing = false;
+    this.showModal = true;
+    this.cdr.detectChanges();
   }
 
-  deleteMaterial(index: number) {
-    if (confirm('Delete this material?')) {
-      this.materials.splice(index, 1);
-      this.saveToStorage();
+  // Open modal for editing existing material
+  openEditModal(material: LocalMaterial) {
+    this.currentMaterial = {
+      id: material.id,
+      sku: material.sku,
+      description: material.description,
+      unitCost: material.unitCost,
+      costPerKg: material.costPerKg,
+      category: material.category,
+      currentStock: material.currentStock,
+      createdAt: material.createdAt
+    };
+    this.isEditing = true;
+    this.showModal = true;
+    this.cdr.detectChanges();
+  }
+
+  // Close modal
+  closeModal() {
+    this.showModal = false;
+    this.currentMaterial = this.createEmptyMaterial();
+    this.cdr.detectChanges();
+  }
+
+  // Save material (both new and edit)
+  async saveMaterial() {
+    // Validate required fields
+    if (!this.currentMaterial.sku || !this.currentMaterial.description) {
+      alert('SKU and Description are required fields.');
+      return;
+    }
+    
+    // Prepare data for Supabase
+    const dbMaterial: Material = {
+      sku: this.currentMaterial.sku.trim(),
+      description: this.currentMaterial.description.trim(),
+      unit_cost: this.currentMaterial.unitCost || 0,
+      cost_per_kg: this.currentMaterial.costPerKg || 0,
+      category: this.currentMaterial.category || '',
+      current_stock: this.currentMaterial.currentStock || 0
+    };
+    
+    // Add ID if editing
+    if (this.isEditing && this.currentMaterial.id) {
+      dbMaterial.id = this.currentMaterial.id;
+    }
+    
+    try {
+      const result = await this.supabase.saveMaterial(dbMaterial);
+      
+      if (result && result.length > 0) {
+        const savedMaterial = result[0];
+        
+        if (this.isEditing) {
+          // Update existing material in the array
+          const index = this.materials.findIndex(m => m.id === savedMaterial.id);
+          if (index !== -1) {
+            this.materials[index] = {
+              id: savedMaterial.id,
+              sku: savedMaterial.sku,
+              description: savedMaterial.description,
+              unitCost: savedMaterial.unit_cost,
+              costPerKg: savedMaterial.cost_per_kg,
+              category: savedMaterial.category,
+              currentStock: savedMaterial.current_stock,
+              createdAt: savedMaterial.created_at
+            };
+          }
+        } else {
+          // Add new material to the array
+          this.materials.unshift({
+            id: savedMaterial.id,
+            sku: savedMaterial.sku,
+            description: savedMaterial.description,
+            unitCost: savedMaterial.unit_cost,
+            costPerKg: savedMaterial.cost_per_kg,
+            category: savedMaterial.category,
+            currentStock: savedMaterial.current_stock,
+            createdAt: savedMaterial.created_at
+          });
+        }
+        
+        // Update pagination
+        this.updatePagination();
+        
+        // Close modal and refresh UI
+        this.closeModal();
+        this.cdr.detectChanges();
+      } else {
+        alert('Failed to save material. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Error saving material:', error);
+      alert('Error saving material: ' + error.message);
     }
   }
 
-  saveToStorage() {
-    localStorage.setItem('ctk_mats', JSON.stringify(this.materials));
-  }
-
-  getStockStatus(material: RawMaterial): string {
-    if (material.currentStock === 0) {
-      return 'status-out-of-stock';
-    } else if (material.currentStock <= (material.minStockLevel || 0)) {
-      return 'status-low-stock';
-    } else {
-      return 'status-in-stock';
+  async deleteMaterial(material: LocalMaterial) {
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete "${material.description}"?`)) {
+      return;
+    }
+    
+    try {
+      if (material.id) {
+        const success = await this.supabase.deleteMaterial(material.id);
+        
+        if (success) {
+          // Remove from local array
+          const index = this.materials.findIndex(m => m.id === material.id);
+          if (index !== -1) {
+            this.materials.splice(index, 1);
+            this.updatePagination();
+            this.cdr.detectChanges();
+          }
+        } else {
+          alert('Failed to delete material. Please try again.');
+        }
+      }
+    } catch (error: any) {
+      alert('Error deleting material: ' + error.message);
     }
   }
 
-  getStockStatusText(material: RawMaterial): string {
-    if (material.currentStock === 0) {
-      return 'Out of Stock';
-    } else if (material.currentStock <= (material.minStockLevel || 0)) {
-      return 'Low Stock';
-    } else {
-      return 'In Stock';
-    }
+  // Refresh data from database
+  async refresh() {
+    await this.loadMaterials();
   }
 
-  calculateTotalValue(): number {
-    return this.materials.reduce((total, material) => {
-      return total + (material.unitCost * (material.currentStock || 0));
-    }, 0);
+  // Calculation methods
+  calculateTotalValue() {
+    return this.materials.reduce((sum, m) => sum + ((m.unitCost || 0) * (m.currentStock || 0)), 0);
   }
 
-  getCategories(): string[] {
-    const categories = this.materials.map(m => m.category).filter(Boolean);
-    return [...new Set(categories)];
+  getLowStockCount() {
+    return this.materials.filter(m => (m.currentStock || 0) < 10).length;
   }
 
-  getLowStockCount(): number {
-    return this.materials.filter(material => 
-      material.currentStock > 0 && material.currentStock <= (material.minStockLevel || 0)
-    ).length;
+  getCategories() {
+    return [...new Set(this.materials.map(m => m.category).filter(Boolean))];
   }
+
+getStockStatus(material: any): string {
+  if (!material.currentStock || material.currentStock === 0) {
+    return 'out-of-stock';
+  }
+  if (material.currentStock < 5) { // adjust threshold here
+    return 'low-stock';
+  }
+  return 'in-stock';
+}
+
+getStockStatusText(material: any): string {
+  if (!material.currentStock || material.currentStock === 0) {
+    return 'No Stock';
+  }
+  if (material.currentStock < 5) {
+    return 'Low Stock';
+  }
+  return 'In Stock';
+}
+
 }

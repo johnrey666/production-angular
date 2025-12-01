@@ -172,6 +172,17 @@ export class ReportsComponent implements OnInit {
     return Math.min(100, (record.actual / record.expected) * 100);
   }
 
+  // Add this method to your ReportsComponent class
+getEfficiencyClass(efficiency: number): string {
+  if (efficiency >= 95) {
+    return 'high';
+  } else if (efficiency >= 85) {
+    return 'medium';
+  } else {
+    return 'low';
+  }
+}
+
   getPositiveVarianceCount(): number {
     return this.filteredRecords.filter(r => r.variance > 0).length;
   }

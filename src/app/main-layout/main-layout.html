@@ -3,14 +3,21 @@
     <!-- Header -->
     <div class="sidebar-header">
       <div class="company-brand">
-        <div class="company-logo">🍳</div>
+        <div class="company-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M3 10H21V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V10Z" fill="#111827"/>
+            <path d="M3 5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V8H3V5Z" fill="#10B981"/>
+          </svg>
+        </div>
         <div class="company-text">
-          <div class="company-name">CTK KITCHEN</div>
-          <div class="company-subtitle">Production</div>
+          <div class="company-name">CTK</div>
+          <div class="company-subtitle">KITCHEN</div>
         </div>
       </div>
-      <button class="toggle-btn" (click)="toggleSidebar()">
-        ←
+      <button class="toggle-btn" (click)="toggleSidebar()" aria-label="Toggle sidebar">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M7.5 9L4.5 6L7.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </button>
     </div>
 
@@ -20,16 +27,45 @@
         *ngFor="let item of navItems" 
         [routerLink]="item.path" 
         routerLinkActive="active" 
+        #rla="routerLinkActive"
         class="nav-item"
         (click)="onNavClick()"
+        [attr.aria-current]="rla.isActive ? 'page' : null"
       >
-        <div class="nav-icon">{{ item.icon }}</div>
+        <div class="nav-icon">
+          <ng-container [ngSwitch]="item.icon">
+            <!-- Dashboard icon -->
+            <svg *ngSwitchCase="'dashboard'" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="3" y="13" width="7" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="12" y="3" width="5" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="12" y="10" width="5" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            
+            <!-- Recipe icon -->
+            <svg *ngSwitchCase="'recipe'" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M5 5H15M5 9H15M5 13H12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <rect x="4" y="4" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            
+            <!-- Add more icons as needed -->
+            <div *ngSwitchDefault>{{ item.icon }}</div>
+          </ng-container>
+        </div>
         <span class="nav-text">{{ item.label }}</span>
-        <div class="active-bar"></div>
       </a>
     </nav>
+
+    <!-- User/Status footer (optional) -->
+    <div class="sidebar-footer" *ngIf="!isCollapsed">
+      <div class="status-indicator">
+        <div class="status-dot"></div>
+        <span class="status-text">Production Active</span>
+      </div>
+    </div>
   </aside>
 
+  <!-- Main Content -->
   <main class="main-content" [class.content-expanded]="isCollapsed">
     <router-outlet></router-outlet>
   </main>

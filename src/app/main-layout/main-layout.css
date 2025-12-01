@@ -2,18 +2,24 @@
   display: flex;
   min-height: 100vh;
   background: #ffffff;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden; /* Prevent horizontal scroll */
 }
 
-/* Sidebar */
+/* ===== SIDEBAR ===== */
 .sidebar {
   width: 240px;
-  background: #fcfcfc;
-  border-right: 1px solid #e8e8e8;
+  background: #ffffff;
+  border-right: 1px solid #f1f5f9;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  flex-shrink: 0; /* Prevent sidebar from shrinking */
 }
 
 .sidebar-collapsed {
@@ -22,8 +28,7 @@
 
 /* Header */
 .sidebar-header {
-  padding: 1.5rem 1.25rem;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 1.5rem 1rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -33,60 +38,76 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
+  min-width: 0;
 }
 
 .sidebar-collapsed .company-brand {
   opacity: 0;
+  pointer-events: none;
+  width: 0;
 }
 
 .company-logo {
-  font-size: 1.25rem;
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #3b82f6, #1e40af);
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #111827;
 }
 
 .company-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .company-name {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #1f2937;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
   letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .company-subtitle {
-  font-size: 0.75rem;
-  color: #6b7280;
-  font-weight: 400;
+  font-size: 0.6875rem;
+  color: #64748b;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .toggle-btn {
-  background: none;
-  border: 1px solid #e5e7eb;
+  background: transparent;
+  border: none;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
-  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  color: #6b7280;
+  color: #64748b;
   transition: all 0.2s ease;
-  font-size: 0.875rem;
+  flex-shrink: 0;
 }
 
 .toggle-btn:hover {
-  background: #f3f4f6;
-  color: #374151;
+  background: #f1f5f9;
+  color: #334155;
 }
 
-.sidebar-collapsed .toggle-btn {
+.toggle-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.sidebar-collapsed .toggle-btn svg {
   transform: rotate(180deg);
 }
 
@@ -96,73 +117,107 @@
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.125rem;
+  margin-top: 0.5rem;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem;
-  color: #6b7280;
+  padding: 0.625rem;
+  color: #64748b;
   text-decoration: none;
-  border-radius: 8px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 6px;
+  transition: all 0.15s ease;
   position: relative;
   overflow: hidden;
 }
 
 .nav-item:hover {
-  background: #ffffff;
-  color: #374151;
-  transform: translateX(2px);
+  background: #f8fafc;
+  color: #334155;
 }
 
 .nav-item.active {
-  background: #ffffff;
-  color: #1e40af;
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.nav-icon {
-  font-size: 1.125rem;
-  width: 20px;
-  text-align: center;
-  transition: transform 0.2s ease;
-}
-
-.nav-item:hover .nav-icon {
-  transform: scale(1.1);
-}
-
-.nav-text {
-  font-size: 0.875rem;
+  background: #f1f5f9;
+  color: #0f172a;
   font-weight: 500;
-  white-space: nowrap;
-  transition: opacity 0.3s ease;
 }
 
-.sidebar-collapsed .nav-text {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.active-bar {
+.nav-item.active::before {
+  content: '';
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 20px;
-  background: #1e40af;
+  height: 16px;
+  background: #10b981;
   border-radius: 0 2px 2px 0;
-  opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
-.nav-item.active .active-bar {
-  opacity: 1;
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-collapsed .nav-text {
+  opacity: 0;
+  width: 0;
+  display: none;
+}
+
+/* Footer */
+.sidebar-footer {
+  padding: 1rem;
+  border-top: 1px solid #f1f5f9;
+  margin-top: auto;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #f0fdf4;
+  border: 1px solid #dcfce7;
+  border-radius: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text {
+  font-size: 0.75rem;
+  color: #065f46;
+  font-weight: 500;
 }
 
 /* Main Content */
@@ -170,22 +225,25 @@
   flex: 1;
   padding: 2rem;
   background: #ffffff;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
+  width: calc(100% - 240px); /* Adjust width based on sidebar */
+  overflow-x: hidden; /* Prevent horizontal overflow */
 }
 
 .content-expanded {
-  margin-left: -176px;
+  width: calc(100% - 64px); /* Adjust width for collapsed sidebar */
 }
 
-/* Animation for router outlet */
+/* Page transitions */
 router-outlet + * {
-  animation: fadeInUp 0.4s ease-out;
+  animation: fadeIn 0.25s ease-out;
 }
 
-@keyframes fadeInUp {
+@keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -193,80 +251,64 @@ router-outlet + * {
   }
 }
 
-/* ===== FIX FOR HYDRATION CSS ISSUES ===== */
-:host {
-  display: block !important;
-}
-
-/* Force CSS for all page components */
-.recipes, 
-.cost-analysis, 
-.raw-materials, 
-.production, 
-.dashboard {
-  opacity: 1 !important;
-  visibility: visible !important;
-  display: block !important;
-}
-
-/* Ensure all critical components are visible */
-.page-header,
-.stats-grid,
-.table-card,
-.recipe-card,
-.controls-card,
-.recipes-container,
-.content-grid {
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-/* Button styles that might be missing */
-.btn-primary, .btn-secondary, .btn-danger {
-  opacity: 1 !important;
-  visibility: visible !important;
-  display: flex !important;
-}
-
-/* Table styles */
-.table-container,
-.ingredients-table,
-.cost-table,
-.materials-table,
-.production-table {
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-/* Input styles */
-.table-input,
-.table-select,
-.config-input,
-.recipe-name-input,
-.date-input,
-.number-input {
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-/* Animation fix */
-@keyframes fadeIn {
-  from {
-    opacity: 1 !important;
-    transform: translateY(0) !important;
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    height: 100vh;
+    z-index: 1000;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
-  to {
-    opacity: 1 !important;
-    transform: translateY(0) !important;
+  
+  .sidebar-collapsed {
+    transform: translateX(-100%);
+  }
+  
+  .main-content {
+    width: 100%;
+    padding: 1.5rem;
+    margin-left: 0 !important; /* Override any margin */
+  }
+  
+  .content-expanded {
+    width: 100%;
+    margin-left: 0 !important; /* Override any margin */
   }
 }
 
-/* Force all child elements */
-.recipes *,
-.cost-analysis *,
-.raw-materials *,
-.production *,
-.dashboard * {
-  opacity: 1 !important;
-  visibility: visible !important;
+/* Utility classes for content */
+.page-header {
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.025em;
+  margin: 0 0 0.5rem 0;
+}
+
+.page-subtitle {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* Clean minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

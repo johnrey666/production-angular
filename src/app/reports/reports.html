@@ -1,29 +1,36 @@
 <div class="reports" @fadeInUp>
   <!-- Header -->
   <div class="page-header">
-    <div class="header-content">
-      <h1>Reports & Analytics</h1>
-      <p>Comprehensive production reports and performance analytics</p>
+    <div>
+      <h1>Reports</h1>
+      <p>Production analytics and performance reports</p>
     </div>
   </div>
 
   <!-- Report Controls -->
   <div class="controls-card">
-    <div class="controls-header">
-      <div class="controls-title">Select Report Period</div>
-      <div class="controls-group">
-        <input 
-          type="month" 
-          [(ngModel)]="selectedMonth" 
-          (change)="generateReport()"
-          class="month-input"
-        >
+    <div class="date-controls">
+      <input 
+        type="month" 
+        [(ngModel)]="selectedMonth" 
+        (change)="generateReport()"
+        class="month-input"
+      >
+      <div class="control-buttons">
         <button class="btn-primary" (click)="exportCSV()">
-          <i class="icon">📊</i>
+          <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3.5 10.5L7 7M7 7L10.5 10.5M7 7V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2.5 4H4.5C5.05228 4 5.5 3.55228 5.5 3V1.5M8.5 1.5V3C8.5 3.55228 8.94772 4 9.5 4H11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
           Export CSV
         </button>
         <button class="btn-secondary" (click)="printReport()">
-          <i class="icon">🖨️</i>
+          <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3.5 5V3C3.5 2.44772 3.94772 2 4.5 2H9.5C10.0523 2 10.5 2.44772 10.5 3V5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="2" y="5" width="10" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4.5 10V12M9.5 10V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
           Print
         </button>
       </div>
@@ -32,46 +39,42 @@
 
   <!-- Summary Stats -->
   <div class="stats-grid">
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
         <div class="stat-value">{{ summaryData.totalDays }}</div>
         <div class="stat-label">Production Days</div>
       </div>
-      <div class="stat-icon">📅</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
-        <div class="stat-value">{{ summaryData.totalOutput | number:'1.0-0' }} kg</div>
-        <div class="stat-label">Total Output</div>
+        <div class="stat-value">{{ summaryData.totalOutput | number:'1.0-0' }}</div>
+        <div class="stat-label">Output (kg)</div>
       </div>
-      <div class="stat-icon">⚖️</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
         <div class="stat-value">{{ summaryData.totalCost | currency:'₱':'symbol':'1.0-0' }}</div>
-        <div class="stat-label">Total Raw Cost</div>
+        <div class="stat-label">Total Cost</div>
       </div>
-      <div class="stat-icon">💰</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
-        <div class="stat-value">{{ summaryData.avgCostPerKg | currency:'₱':'symbol':'1.0-0' }}</div>
+        <div class="stat-value">{{ summaryData.avgCostPerKg | currency:'₱':'symbol':'1.1-1' }}</div>
         <div class="stat-label">Avg ₱/kg</div>
       </div>
-      <div class="stat-icon">📈</div>
     </div>
   </div>
 
   <!-- Production Report Table -->
   <div class="table-card">
     <div class="card-header">
-      <div class="card-title">Production Report - {{ selectedMonth | date:'MMMM yyyy' }}</div>
-      <div class="report-actions">
-        <button class="btn-secondary" (click)="toggleVarianceView()">
-          <i class="icon">{{ showVarianceOnly ? '📋' : '📊' }}</i>
-          {{ showVarianceOnly ? 'Show All' : 'Variance Only' }}
-        </button>
+      <div>
+        <h2 class="card-title">Production Report</h2>
+        <p class="card-subtitle">{{ selectedMonth | date:'MMMM yyyy' }}</p>
       </div>
+      <button class="btn-secondary" (click)="toggleVarianceView()">
+        {{ showVarianceOnly ? 'Show All' : 'Variance Only' }}
+      </button>
     </div>
 
     <div class="table-container">
@@ -80,33 +83,31 @@
           <tr>
             <th>Date</th>
             <th>Product</th>
-            <th>Order (batches)</th>
-            <th>Expected kg</th>
-            <th>Actual kg</th>
-            <th>Raw Used kg</th>
-            <th>Raw Cost</th>
-            <th>Variance kg</th>
-            <th>Efficiency</th>
+            <th class="text-right">Batches</th>
+            <th class="text-right">Expected</th>
+            <th class="text-right">Actual</th>
+            <th class="text-right">Raw Used</th>
+            <th class="text-right">Cost</th>
+            <th class="text-right">Variance</th>
+            <th class="text-center">Efficiency</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let record of filteredRecords" @slideIn 
-              [class.high-variance]="record.variance > 10 || record.variance < -10"
-              [class.low-variance]="(record.variance <= 10 && record.variance >= -10) && record.variance !== 0">
+              [class.high-variance]="record.variance > 10 || record.variance < -10">
             <td class="date">{{ record.date }}</td>
             <td class="product">{{ record.product }}</td>
-            <td class="number">{{ record.batches | number:'1.1-1' }}</td>
-            <td class="number">{{ record.expected | number:'1.1-1' }}</td>
-            <td class="number">{{ record.actual | number:'1.1-1' }}</td>
-            <td class="number">{{ record.rawUsed | number:'1.1-1' }}</td>
-            <td class="cost">{{ record.rawCost | currency:'₱':'symbol':'1.0-0' }}</td>
-            <td class="variance" [class]="record.variance >= 0 ? 'positive' : 'negative'">
+            <td class="text-right number">{{ record.batches | number:'1.1-1' }}</td>
+            <td class="text-right number">{{ record.expected | number:'1.1-1' }}</td>
+            <td class="text-right number">{{ record.actual | number:'1.1-1' }}</td>
+            <td class="text-right number">{{ record.rawUsed | number:'1.1-1' }}</td>
+            <td class="text-right cost">{{ record.rawCost | currency:'₱':'symbol':'1.0-0' }}</td>
+            <td class="text-right variance" [class]="record.variance >= 0 ? 'positive' : 'negative'">
               {{ record.variance >= 0 ? '+' : '' }}{{ record.variance | number:'1.1-1' }}
             </td>
-            <td class="efficiency">
-              <div class="efficiency-bar">
-                <div class="efficiency-fill" [style.width.%]="calculateEfficiency(record)"></div>
-                <span class="efficiency-text">{{ calculateEfficiency(record) }}%</span>
+            <td class="text-center">
+              <div class="efficiency-badge" [class]="getEfficiencyClass(calculateEfficiency(record))">
+                {{ calculateEfficiency(record) }}%
               </div>
             </td>
           </tr>
@@ -116,80 +117,93 @@
 
     <!-- Empty State -->
     <div *ngIf="filteredRecords.length === 0" class="empty-state">
-      <div class="empty-icon">📊</div>
-      <h3>No Data Available</h3>
-      <p>No production data found for the selected period</p>
+      <div class="empty-icon">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <path d="M16 12V20M12 16H20" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round"/>
+          <rect x="8" y="8" width="16" height="16" rx="2" stroke="#9CA3AF" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <p>No production data for this period</p>
       <button class="btn-secondary" (click)="loadSampleData()">
         Load Sample Data
       </button>
     </div>
 
     <!-- Report Summary -->
-    <div class="report-summary" *ngIf="filteredRecords.length > 0">
-      <div class="summary-grid">
+    <div class="table-footer" *ngIf="filteredRecords.length > 0">
+      <div class="summary">
         <div class="summary-item">
-          <div class="summary-label">Total Records</div>
-          <div class="summary-value">{{ filteredRecords.length }}</div>
+          <span class="summary-label">Total Records:</span>
+          <span class="summary-value">{{ filteredRecords.length }}</span>
         </div>
         <div class="summary-item">
-          <div class="summary-label">Positive Variance</div>
-          <div class="summary-value positive">{{ getPositiveVarianceCount() }}</div>
+          <span class="summary-label">Positive Variance:</span>
+          <span class="summary-value positive">{{ getPositiveVarianceCount() }}</span>
         </div>
         <div class="summary-item">
-          <div class="summary-label">Negative Variance</div>
-          <div class="summary-value negative">{{ getNegativeVarianceCount() }}</div>
+          <span class="summary-label">Negative Variance:</span>
+          <span class="summary-value negative">{{ getNegativeVarianceCount() }}</span>
         </div>
         <div class="summary-item">
-          <div class="summary-label">Avg Efficiency</div>
-          <div class="summary-value">{{ getAverageEfficiency() }}%</div>
+          <span class="summary-label">Avg Efficiency:</span>
+          <span class="summary-value">{{ getAverageEfficiency() }}%</span>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Charts Section -->
+  <!-- Charts & Metrics -->
   <div class="content-grid" *ngIf="filteredRecords.length > 0">
-    <div class="chart-card" @slideIn>
-      <div class="section-header">
-        <h2>Production Trends</h2>
+    <!-- Chart -->
+    <div class="table-card">
+      <div class="card-header">
+        <h2 class="card-title">Production Trends</h2>
         <div class="chart-legend">
           <div class="legend-item">
-            <div class="legend-color expected"></div>
+            <div class="legend-dot expected"></div>
             <span>Expected</span>
           </div>
           <div class="legend-item">
-            <div class="legend-color actual"></div>
+            <div class="legend-dot actual"></div>
             <span>Actual</span>
           </div>
         </div>
       </div>
-      <div class="chart-placeholder">
-        <div class="chart-icon">📈</div>
-        <p>Production trend chart would appear here</p>
-        <small>Daily expected vs actual output comparison</small>
+      <div class="card-body">
+        <div class="chart-placeholder">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <path d="M8 32L20 24L28 28L40 20" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 24L20 20L28 24L40 16" stroke="#E5E7EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p>Production trend visualization</p>
+          <small>Daily expected vs actual output</small>
+        </div>
       </div>
     </div>
 
-    <div class="metrics-card" @slideIn>
-      <div class="section-header">
-        <h2>Key Metrics</h2>
+    <!-- Metrics -->
+    <div class="table-card">
+      <div class="card-header">
+        <h2 class="card-title">Key Metrics</h2>
       </div>
-      <div class="metrics-content">
-        <div class="metric-item">
-          <div class="metric-label">Best Performing Product</div>
-          <div class="metric-value">{{ getBestProduct() }}</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">Highest Variance Day</div>
-          <div class="metric-value">{{ getHighestVarianceDate() }}</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">Cost Efficiency</div>
-          <div class="metric-value">{{ getCostEfficiency() }}%</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">Recommendation</div>
-          <div class="metric-recommendation">{{ getRecommendation() }}</div>
+      <div class="card-body">
+        <div class="metrics-list">
+          <div class="metric-item">
+            <div class="metric-label">Best Product</div>
+            <div class="metric-value">{{ getBestProduct() }}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Highest Variance</div>
+            <div class="metric-value">{{ getHighestVarianceDate() }}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Cost Efficiency</div>
+            <div class="metric-value">{{ getCostEfficiency() }}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Recommendation</div>
+            <div class="metric-note">{{ getRecommendation() }}</div>
+          </div>
         </div>
       </div>
     </div>

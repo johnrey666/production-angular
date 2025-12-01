@@ -1,20 +1,28 @@
 <div class="production" @fadeInUp>
-
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1>Production</h1>
+      <p>Daily production tracking and cost analysis</p>
+    </div>
+  </div>
 
   <!-- Controls -->
   <div class="controls-card">
-    <div class="controls-group">
-      <div class="date-controls">
-        <input 
-          type="date" 
-          [(ngModel)]="selectedDate" 
-          (change)="loadDay()"
-          class="date-input"
-        >
-        <button class="btn-secondary" (click)="setToday()">Today</button>
-      </div>
+    <div class="date-controls">
+      <input 
+        type="date" 
+        [(ngModel)]="selectedDate" 
+        (change)="loadDay()"
+        class="date-input"
+      >
+      <button class="btn-secondary" (click)="setToday()">Today</button>
+    </div>
+    <div class="controls-actions">
       <button class="btn-primary" (click)="addRow()">
-        <i class="icon">+</i>
+        <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
         Add Product
       </button>
     </div>
@@ -27,13 +35,13 @@
         <thead>
           <tr>
             <th>Product</th>
-            <th>Std Yield<br><small>(kg per batch)</small></th>
-            <th>Batches<br>Ordered</th>
-            <th>Expected<br>Output (kg)</th>
-            <th>Actual<br>Output (kg)</th>
-            <th>Raw Mat<br>Cost</th>
-            <th>Variance<br>(kg)</th>
-            <th>Cost/kg</th>
+            <th class="text-center">Std Yield<br><span class="subtitle">kg/batch</span></th>
+            <th class="text-center">Batches</th>
+            <th class="text-center">Expected<br><span class="subtitle">kg</span></th>
+            <th class="text-center">Actual<br><span class="subtitle">kg</span></th>
+            <th class="text-right">Raw Cost</th>
+            <th class="text-center">Variance</th>
+            <th class="text-right">Cost/kg</th>
             <th></th>
           </tr>
         </thead>
@@ -45,14 +53,16 @@
                 (change)="onProductChange(i)"
                 class="select-input"
               >
-                <option value="">-- Select Product --</option>
+                <option value="">Select Product</option>
                 <option *ngFor="let recipe of recipes" [value]="recipe.name">
                   {{ recipe.name }}
                 </option>
               </select>
             </td>
-            <td class="text-center">{{ getRecipeYield(entry.product) || '-' }}</td>
-            <td>
+            <td class="text-center">
+              <span class="static-value">{{ getRecipeYield(entry.product) || '–' }}</span>
+            </td>
+            <td class="text-center">
               <input 
                 type="number" 
                 [(ngModel)]="entry.batches" 
@@ -60,28 +70,38 @@
                 min="0" 
                 step="0.5"
                 class="number-input"
+                placeholder="0"
               >
             </td>
-            <td class="text-center">{{ calculateExpectedOutput(entry) | number:'1.2-2' }}</td>
-            <td>
+            <td class="text-center">
+              <span class="static-value">{{ calculateExpectedOutput(entry) | number:'1.1-1' }}</span>
+            </td>
+            <td class="text-center">
               <input 
                 type="number" 
                 [(ngModel)]="entry.output" 
                 (change)="updateEntry(i)"
                 step="0.1"
                 class="number-input"
+                placeholder="0.0"
               >
             </td>
-            <td class="text-right cost">₱{{ calculateRawCost(entry) | number:'1.0-0' }}</td>
-            <td [class]="getVarianceClass(entry)" class="text-center variance">
-              {{ calculateVariance(entry) | number:'1.2-2' }}
+            <td class="text-right">
+              <span class="cost-value">₱{{ calculateRawCost(entry) | number:'1.0-0' }}</span>
             </td>
-            <td class="text-right cost">
-              {{ calculateCostPerKg(entry) }}
+            <td class="text-center">
+              <span class="variance-badge" [class]="getVarianceClass(entry)">
+                {{ calculateVariance(entry) | number:'+1.1-1' }}
+              </span>
+            </td>
+            <td class="text-right">
+              <span class="cost-value">{{ calculateCostPerKg(entry) }}</span>
             </td>
             <td class="actions">
-              <button class="btn-danger" (click)="deleteEntry(i)">
-                ×
+              <button class="btn-icon-danger" (click)="deleteEntry(i)" aria-label="Delete">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M3 3L9 9M3 9L9 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
               </button>
             </td>
           </tr>
@@ -90,15 +110,20 @@
     </div>
 
     <!-- Summary -->
-    <div class="table-summary">
-      <div class="summary-item">
-        <strong>Total Raw Cost Today:</strong> ₱{{ totalCost | number:'1.0-0' }}
-      </div>
-      <div class="summary-item">
-        <strong>Total Output:</strong> {{ totalOutput | number:'1.2-2' }} kg
-      </div>
-      <div class="summary-item">
-        <strong>Average Cost/kg:</strong> {{ calculateAverageCost() }}
+    <div class="table-footer">
+      <div class="summary">
+        <div class="summary-item">
+          <span class="summary-label">Total Raw Cost:</span>
+          <span class="summary-value">₱{{ totalCost | number:'1.0-0' }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Output:</span>
+          <span class="summary-value">{{ totalOutput | number:'1.1-1' }} kg</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Avg Cost/kg:</span>
+          <span class="summary-value">{{ calculateAverageCost() }}</span>
+        </div>
       </div>
     </div>
   </div>

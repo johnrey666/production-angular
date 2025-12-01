@@ -1,5 +1,5 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
+import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 // Removed animations import to avoid dependency on @angular/animations
 
@@ -12,6 +12,8 @@ import { CommonModule } from '@angular/common';
 })
 export class MainLayoutComponent {
   isCollapsed = false;
+  // Expose the router to the template for calls like `router.isActive(...)`
+  router = inject(Router);
   
   navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },

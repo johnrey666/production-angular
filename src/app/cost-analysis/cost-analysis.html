@@ -1,46 +1,53 @@
 <div class="cost-analysis" @fadeInUp>
-
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1>Cost Analysis</h1>
+      <p>Recipe costing and efficiency metrics</p>
+    </div>
+  </div>
 
   <!-- Summary Stats -->
   <div class="stats-grid">
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
         <div class="stat-value">{{ totalRawCost | currency:'₱':'symbol':'1.0-0' }}</div>
-        <div class="stat-label">Total Raw Cost Today</div>
+        <div class="stat-label">Total Raw Cost</div>
       </div>
-      <div class="stat-icon">💰</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
-        <div class="stat-value">{{ avgCostPerKg | currency:'₱':'symbol':'1.0-0' }}</div>
-        <div class="stat-label">Avg Cost per kg</div>
+        <div class="stat-value">{{ avgCostPerKg | currency:'₱':'symbol':'1.1-1' }}</div>
+        <div class="stat-label">Avg Cost/kg</div>
       </div>
-      <div class="stat-icon">⚖️</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
-        <div class="stat-value">{{ highestCostProduct || '-' }}</div>
-        <div class="stat-label">Highest Cost Product</div>
+        <div class="stat-value">{{ highestCostProduct || '–' }}</div>
+        <div class="stat-label">Highest Cost</div>
       </div>
-      <div class="stat-icon">📈</div>
     </div>
-    <div class="stat-card" @slideIn>
+    <div class="stat-card">
       <div class="stat-content">
         <div class="stat-value" [class]="netVariance >= 0 ? 'positive' : 'negative'">
-          {{ netVariance >= 0 ? '+' : '' }}{{ netVariance | number:'1.1-1' }} kg
+          {{ netVariance >= 0 ? '+' : '' }}{{ netVariance | number:'1.1-1' }}
         </div>
-        <div class="stat-label">Net Yield Variance</div>
+        <div class="stat-label">Yield Variance</div>
       </div>
-      <div class="stat-icon">📊</div>
     </div>
   </div>
 
   <!-- Recipe Cost Calculator -->
   <div class="table-card">
     <div class="card-header">
-      <div class="card-title">Recipe Cost Calculator</div>
+      <div>
+        <h2 class="card-title">Recipe Calculator</h2>
+        <p class="card-subtitle">Calculate product costs</p>
+      </div>
       <button class="btn-primary" (click)="addIngredientRow()">
-        <i class="icon">+</i>
+        <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
         Add Ingredient
       </button>
     </div>
@@ -50,7 +57,7 @@
         <input 
           type="text" 
           [(ngModel)]="recipeName" 
-          placeholder="Recipe / Product Name"
+          placeholder="Recipe name"
           class="name-input"
         >
       </div>
@@ -59,10 +66,10 @@
         <table class="cost-table">
           <thead>
             <tr>
-              <th>Raw Material</th>
-              <th>Qty Used (kg)</th>
-              <th>Cost/kg</th>
-              <th>Total Cost</th>
+              <th>Material</th>
+              <th class="text-right">Qty (kg)</th>
+              <th class="text-right">Cost/kg</th>
+              <th class="text-right">Total</th>
               <th></th>
             </tr>
           </thead>
@@ -74,16 +81,16 @@
                   (change)="onMaterialChange(i)"
                   class="table-select"
                 >
-                  <option value="-1">Select Material</option>
+                  <option value="-1">Select material</option>
                   <option 
                     *ngFor="let material of rawMaterials; let j = index" 
                     [value]="j"
                   >
-                    {{ material.description }} ({{ material.sku }})
+                    {{ material.description }}
                   </option>
                 </select>
               </td>
-              <td>
+              <td class="text-right">
                 <input 
                   type="number" 
                   [(ngModel)]="ingredient.quantity" 
@@ -91,17 +98,24 @@
                   step="0.01"
                   min="0"
                   class="table-input number"
+                  placeholder="0.00"
                 >
               </td>
-              <td class="cost">
-                {{ getMaterialCostPerKg(ingredient.materialIndex) | currency:'₱':'symbol':'1.1-1' }}
+              <td class="text-right">
+                <span class="cost-value">
+                  {{ getMaterialCostPerKg(ingredient.materialIndex) | currency:'₱':'symbol':'1.1-1' }}
+                </span>
               </td>
-              <td class="cost total">
-                {{ calculateIngredientTotalCost(ingredient) | currency:'₱':'symbol':'1.2-2' }}
+              <td class="text-right">
+                <span class="cost-value total">
+                  {{ calculateIngredientTotalCost(ingredient) | currency:'₱':'symbol':'1.1-1' }}
+                </span>
               </td>
               <td class="actions">
-                <button class="btn-danger" (click)="removeIngredient(i)">
-                  ×
+                <button class="btn-icon-danger" (click)="removeIngredient(i)" aria-label="Delete">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M3 3L9 9M3 9L9 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
                 </button>
               </td>
             </tr>
@@ -111,17 +125,21 @@
               <td colspan="3" class="total-label">
                 <strong>Total Recipe Cost</strong>
               </td>
-              <td class="cost grand-total">
-                {{ totalRecipeCost | currency:'₱':'symbol':'1.2-2' }}
+              <td class="text-right">
+                <span class="cost-value grand-total">
+                  {{ totalRecipeCost | currency:'₱':'symbol':'1.1-1' }}
+                </span>
               </td>
               <td></td>
             </tr>
             <tr *ngIf="recipeName && recipeIngredients.length > 0">
               <td colspan="3" class="total-label">
-                <strong>Cost per kg (estimated)</strong>
+                <strong>Estimated Cost/kg</strong>
               </td>
-              <td class="cost per-kg">
-                {{ calculateCostPerKg() | currency:'₱':'symbol':'1.2-2' }}/kg
+              <td class="text-right">
+                <span class="cost-value per-kg">
+                  {{ calculateCostPerKg() | currency:'₱':'symbol':'1.1-1' }}/kg
+                </span>
               </td>
               <td></td>
             </tr>
@@ -131,64 +149,88 @@
 
       <!-- Empty State -->
       <div *ngIf="recipeIngredients.length === 0" class="empty-state">
-        <div class="empty-icon">🧮</div>
-        <p>No ingredients added to the recipe</p>
+        <div class="empty-icon">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <path d="M16 12V20M12 16H20" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="8" y="8" width="16" height="16" rx="2" stroke="#9CA3AF" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <p>No ingredients added</p>
         <button class="btn-secondary" (click)="addIngredientRow()">
-          Add First Ingredient
+          Add Ingredient
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Cost Breakdown -->
+  <!-- Cost Breakdown & Efficiency -->
   <div class="content-grid">
-    <div class="breakdown-card" @slideIn>
-      <div class="section-header">
-        <h2>Cost Breakdown</h2>
+    <!-- Cost Breakdown -->
+    <div class="table-card">
+      <div class="card-header">
+        <h2 class="card-title">Cost Breakdown</h2>
       </div>
-      <div class="breakdown-content">
-        <div class="breakdown-item" *ngFor="let product of productCosts">
-          <div class="product-name">{{ product.name }}</div>
-          <div class="product-cost">{{ product.cost | currency:'₱':'symbol':'1.0-0' }}</div>
-          <div class="progress-bar">
-            <div 
-                  class="progress-fill" 
-                  [style.width.%]="getCostPercentage(product.cost)"
-            ></div>
+      <div class="card-body">
+        <div class="breakdown-list">
+          <div class="breakdown-item" *ngFor="let product of productCosts">
+            <div class="product-info">
+              <div class="product-name">{{ product.name }}</div>
+              <div class="product-cost">{{ product.cost | currency:'₱':'symbol':'1.0-0' }}</div>
+            </div>
+            <div class="progress-bar">
+              <div 
+                class="progress-fill" 
+                [style.width.%]="getCostPercentage(product.cost)"
+              ></div>
+            </div>
+            <div class="percentage">{{ getCostPercentage(product.cost) | number:'1.0-0' }}%</div>
           </div>
-          <div class="percentage">{{ getCostPercentage(product.cost) | number:'1.0-0' }}%</div>
         </div>
       </div>
     </div>
 
-    <div class="efficiency-card" @slideIn>
-      <div class="section-header">
-        <h2>Cost Efficiency</h2>
+    <!-- Efficiency -->
+    <div class="table-card">
+      <div class="card-header">
+        <h2 class="card-title">Efficiency</h2>
       </div>
-      <div class="efficiency-content">
-        <div class="efficiency-item">
-          <div class="efficiency-label">Material Utilization</div>
-          <div class="efficiency-value">{{ calculateEfficiency() }}%</div>
-          <div class="efficiency-bar">
-            <div 
-                  class="efficiency-fill" 
-                  [style.width.%]="calculateEfficiency()"
-            ></div>
+      <div class="card-body">
+        <div class="efficiency-list">
+          <div class="efficiency-item">
+            <div class="efficiency-info">
+              <div class="efficiency-label">Material Utilization</div>
+              <div class="efficiency-value">{{ calculateEfficiency() }}%</div>
+            </div>
+            <div class="progress-bar">
+              <div 
+                class="progress-fill efficiency" 
+                [style.width.%]="calculateEfficiency()"
+              ></div>
+            </div>
+          </div>
+          <div class="efficiency-item">
+            <div class="efficiency-info">
+              <div class="efficiency-label">Waste Reduction</div>
+              <div class="efficiency-value">{{ calculateWasteReduction() }}%</div>
+            </div>
+            <div class="progress-bar">
+              <div 
+                class="progress-fill efficiency" 
+                [style.width.%]="calculateWasteReduction()"
+              ></div>
+            </div>
           </div>
         </div>
-        <div class="efficiency-item">
-          <div class="efficiency-label">Waste Reduction</div>
-          <div class="efficiency-value">{{ calculateWasteReduction() }}%</div>
-          <div class="efficiency-bar">
-            <div 
-                  class="efficiency-fill" 
-                  [style.width.%]="calculateWasteReduction()"
-            ></div>
-          </div>
-        </div>
+        
         <div class="recommendation">
-          <h4>Recommendation</h4>
-          <p>{{ getCostRecommendation() }}</p>
+          <div class="recommendation-header">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 3V13M3 8H13" stroke="#3B82F6" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="8" cy="8" r="7" stroke="#3B82F6" stroke-width="1.5"/>
+            </svg>
+            <span>Recommendation</span>
+          </div>
+          <p class="recommendation-text">{{ getCostRecommendation() }}</p>
         </div>
       </div>
     </div>
