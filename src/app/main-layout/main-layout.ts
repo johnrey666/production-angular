@@ -1,0 +1,33 @@
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { CommonModule } from '@angular/common';
+// Removed animations import to avoid dependency on @angular/animations
+
+@Component({
+  selector: 'app-main-layout',
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule],
+  templateUrl: './main-layout.html',
+  styleUrls: ['./main-layout.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class MainLayoutComponent {
+  isCollapsed = false;
+  
+  navItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
+    { path: '/production', label: 'Production', icon: '🏭' },
+    { path: '/raw-materials', label: 'Raw Materials', icon: '📦' },
+    { path: '/recipes', label: 'Recipes', icon: '📝' },
+    { path: '/cost-analysis', label: 'Cost Analysis', icon: '💰' },
+    { path: '/reports', label: 'Reports', icon: '📈' }
+  ];
+
+  toggleSidebar() {
+    this.isCollapsed = !this.isCollapsed;
+  }
+
+  onNavClick() {
+    // Optional: Auto-collapse on mobile or add click effects
+    console.log('Navigation clicked');
+  }
+}

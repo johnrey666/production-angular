@@ -1,0 +1,36 @@
+<div class="layout-container">
+  <aside class="sidebar" [class.sidebar-collapsed]="isCollapsed">
+    <!-- Header -->
+    <div class="sidebar-header">
+      <div class="company-brand">
+        <div class="company-logo">🍳</div>
+        <div class="company-text">
+          <div class="company-name">CTK KITCHEN</div>
+          <div class="company-subtitle">Production</div>
+        </div>
+      </div>
+      <button class="toggle-btn" (click)="toggleSidebar()">
+        ←
+      </button>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="sidebar-nav">
+      <a 
+        *ngFor="let item of navItems" 
+        [routerLink]="item.path" 
+        routerLinkActive="active" 
+        class="nav-item"
+        (click)="onNavClick()"
+      >
+        <div class="nav-icon">{{ item.icon }}</div>
+        <span class="nav-text">{{ item.label }}</span>
+        <div class="active-bar"></div>
+      </a>
+    </nav>
+  </aside>
+
+  <main class="main-content" [class.content-expanded]="isCollapsed">
+    <router-outlet></router-outlet>
+  </main>
+</div>

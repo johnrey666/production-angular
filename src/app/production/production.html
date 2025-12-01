@@ -1,0 +1,105 @@
+<div class="production" @fadeInUp>
+
+
+  <!-- Controls -->
+  <div class="controls-card">
+    <div class="controls-group">
+      <div class="date-controls">
+        <input 
+          type="date" 
+          [(ngModel)]="selectedDate" 
+          (change)="loadDay()"
+          class="date-input"
+        >
+        <button class="btn-secondary" (click)="setToday()">Today</button>
+      </div>
+      <button class="btn-primary" (click)="addRow()">
+        <i class="icon">+</i>
+        Add Product
+      </button>
+    </div>
+  </div>
+
+  <!-- Production Table -->
+  <div class="table-card">
+    <div class="table-container">
+      <table class="production-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Std Yield<br><small>(kg per batch)</small></th>
+            <th>Batches<br>Ordered</th>
+            <th>Expected<br>Output (kg)</th>
+            <th>Actual<br>Output (kg)</th>
+            <th>Raw Mat<br>Cost</th>
+            <th>Variance<br>(kg)</th>
+            <th>Cost/kg</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of currentEntries; let i = index" @slideIn>
+            <td>
+              <select 
+                [(ngModel)]="entry.product" 
+                (change)="onProductChange(i)"
+                class="select-input"
+              >
+                <option value="">-- Select Product --</option>
+                <option *ngFor="let recipe of recipes" [value]="recipe.name">
+                  {{ recipe.name }}
+                </option>
+              </select>
+            </td>
+            <td class="text-center">{{ getRecipeYield(entry.product) || '-' }}</td>
+            <td>
+              <input 
+                type="number" 
+                [(ngModel)]="entry.batches" 
+                (change)="updateEntry(i)"
+                min="0" 
+                step="0.5"
+                class="number-input"
+              >
+            </td>
+            <td class="text-center">{{ calculateExpectedOutput(entry) | number:'1.2-2' }}</td>
+            <td>
+              <input 
+                type="number" 
+                [(ngModel)]="entry.output" 
+                (change)="updateEntry(i)"
+                step="0.1"
+                class="number-input"
+              >
+            </td>
+            <td class="text-right cost">₱{{ calculateRawCost(entry) | number:'1.0-0' }}</td>
+            <td [class]="getVarianceClass(entry)" class="text-center variance">
+              {{ calculateVariance(entry) | number:'1.2-2' }}
+            </td>
+            <td class="text-right cost">
+              {{ calculateCostPerKg(entry) }}
+            </td>
+            <td class="actions">
+              <button class="btn-danger" (click)="deleteEntry(i)">
+                ×
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary -->
+    <div class="table-summary">
+      <div class="summary-item">
+        <strong>Total Raw Cost Today:</strong> ₱{{ totalCost | number:'1.0-0' }}
+      </div>
+      <div class="summary-item">
+        <strong>Total Output:</strong> {{ totalOutput | number:'1.2-2' }} kg
+      </div>
+      <div class="summary-item">
+        <strong>Average Cost/kg:</strong> {{ calculateAverageCost() }}
+      </div>
+    </div>
+  </div>
+</div>

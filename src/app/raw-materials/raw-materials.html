@@ -1,0 +1,158 @@
+<div class="raw-materials" @fadeInUp>
+
+
+  <!-- Materials Table -->
+  <div class="table-card">
+    <div class="card-header">
+      <div class="card-title">Raw Materials Database</div>
+      <button class="btn-primary" (click)="addMaterial()">
+        <i class="icon">+</i>
+        Add Material
+      </button>
+    </div>
+
+    <div class="table-container">
+      <table class="materials-table">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Description</th>
+            <th>Unit Cost</th>
+            <th>Cost/kg</th>
+            <th>Category</th>
+            <th>Current Stock</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let material of materials; let i = index" @slideIn>
+            <td>
+              <input 
+                [(ngModel)]="material.sku" 
+                (blur)="saveMaterial(i)"
+                placeholder="Enter SKU"
+                class="table-input"
+              >
+            </td>
+            <td>
+              <input 
+                [(ngModel)]="material.description" 
+                (blur)="saveMaterial(i)"
+                placeholder="Material description"
+                class="table-input"
+              >
+            </td>
+            <td>
+              <input 
+                type="number"
+                [(ngModel)]="material.unitCost" 
+                (blur)="saveMaterial(i)"
+                step="0.01"
+                min="0"
+                class="table-input number"
+              >
+            </td>
+            <td>
+              <input 
+                type="number"
+                [(ngModel)]="material.costPerKg" 
+                (blur)="saveMaterial(i)"
+                step="0.1"
+                min="0"
+                class="table-input number"
+              >
+            </td>
+            <td>
+              <select 
+                [(ngModel)]="material.category" 
+                (change)="saveMaterial(i)"
+                class="table-select"
+              >
+                <option value="">Select Category</option>
+                <option value="Pork">Pork</option>
+                <option value="Chicken">Chicken</option>
+                <option value="Beef">Beef</option>
+                <option value="Seasoning">Seasoning</option>
+                <option value="Oil">Oil</option>
+                <option value="Sweetener">Sweetener</option>
+                <option value="Condiment">Condiment</option>
+                <option value="Vegetable">Vegetable</option>
+                <option value="Packaging">Packaging</option>
+                <option value="Other">Other</option>
+              </select>
+            </td>
+            <td>
+              <div class="stock-info">
+                <input 
+                  type="number"
+                  [(ngModel)]="material.currentStock" 
+                  (blur)="saveMaterial(i)"
+                  step="0.1"
+                  min="0"
+                  class="table-input number stock-input"
+                >
+                <span class="stock-unit">kg</span>
+              </div>
+            </td>
+            <td>
+              <div class="status-badge" [class]="getStockStatus(material)">
+                {{ getStockStatusText(material) }}
+              </div>
+            </td>
+            <td class="actions">
+              <button class="btn-danger" (click)="deleteMaterial(i)">
+                ×
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary -->
+    <div class="table-summary">
+      <div class="summary-item">
+        <strong>Total Materials:</strong> {{ materials.length }}
+      </div>
+      <div class="summary-item">
+        <strong>Total Inventory Value:</strong> ₱{{ calculateTotalValue() | number:'1.0-0' }}
+      </div>
+      <div class="summary-item">
+        <strong>Low Stock Items:</strong> {{ getLowStockCount() }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Stats -->
+  <div class="stats-grid" *ngIf="materials.length > 0">
+    <div class="stat-card" @slideIn>
+      <div class="stat-content">
+        <div class="stat-value">{{ materials.length }}</div>
+        <div class="stat-label">Total Materials</div>
+      </div>
+      <div class="stat-icon">📦</div>
+    </div>
+    <div class="stat-card" @slideIn>
+      <div class="stat-content">
+        <div class="stat-value">{{ getCategories().length }}</div>
+        <div class="stat-label">Categories</div>
+      </div>
+      <div class="stat-icon">🏷️</div>
+    </div>
+    <div class="stat-card" @slideIn>
+      <div class="stat-content">
+        <div class="stat-value">₱{{ calculateTotalValue() | number:'1.0-0' }}</div>
+        <div class="stat-label">Total Value</div>
+      </div>
+      <div class="stat-icon">💰</div>
+    </div>
+    <div class="stat-card" @slideIn>
+      <div class="stat-content">
+        <div class="stat-value">{{ getLowStockCount() }}</div>
+        <div class="stat-label">Low Stock</div>
+      </div>
+      <div class="stat-icon">⚠️</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,42 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="header">
+      <h1>CTK KITCHEN</h1>
+      <p>Production Management System</p>
+    </div>
+
+    <div class="demo-note">
+      <strong>Demo:</strong> Use any credentials
+    </div>
+
+    <form #loginForm="ngForm" (ngSubmit)="onSubmit()">
+      <div class="input-group">
+        <input
+          type="text"
+          placeholder="Username"
+          required
+          [(ngModel)]="username"
+          name="username"
+        >
+      </div>
+
+      <div class="input-group">
+        <input
+          type="password"
+          placeholder="Password"
+          required
+          [(ngModel)]="password"
+          name="password"
+        >
+      </div>
+
+      <button type="submit" class="signin-btn" [disabled]="!loginForm.form.valid">
+        Sign In
+      </button>
+    </form>
+
+    <div class="footer">
+      © 2025 CTK Kitchen
+    </div>
+  </div>
+</div>

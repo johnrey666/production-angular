@@ -1,0 +1,72 @@
+<div class="dashboard" @fadeInUp>
+
+   <div class="date-display">{{ currentDate }}</div><br>
+  <!-- Summary & Alerts -->
+  <div class="content-grid">
+    <div class="summary-section" @slideIn>
+      <div class="section-header">
+        <h2>Today's Summary</h2>
+        <div class="status-badge positive">On Track</div>
+      </div>
+      <div class="summary-content">
+        <p class="summary-text">All systems running smoothly. Production efficiency at optimal levels with minimal variance.</p>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-label">Top Product</div>
+            <div class="metric-value">Pork BBQ</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Efficiency</div>
+            <div class="metric-value positive">98.2%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Wastage</div>
+            <div class="metric-value positive">0.4%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="alerts-section" @slideIn>
+      <div class="section-header">
+        <h2>Active Alerts</h2>
+        <div class="alert-count">2</div>
+      </div>
+      <div class="alerts-list">
+        <div class="alert-item info">
+          <div class="alert-icon">ℹ️</div>
+          <div class="alert-content">
+            <div class="alert-title">Batch #0248 Complete</div>
+            <div class="alert-time">2 minutes ago</div>
+          </div>
+        </div>
+        <div class="alert-item warning">
+          <div class="alert-icon">⚠️</div>
+          <div class="alert-content">
+            <div class="alert-title">Low Stock: Chicken Breast</div>
+            <div class="alert-time">1 hour ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="actions-section" @slideIn>
+    <h2>Quick Actions</h2>
+    <div class="actions-grid">
+      <button class="action-btn" (click)="startProduction()">
+        <div class="action-icon">⚡</div>
+        <span>Start Production</span>
+      </button>
+      <button class="action-btn" (click)="viewReports()">
+        <div class="action-icon">📊</div>
+        <span>Generate Report</span>
+      </button>
+      <button class="action-btn" (click)="manageInventory()">
+        <div class="action-icon">📦</div>
+        <span>Check Inventory</span>
+      </button>
+    </div>
+  </div>
+</div>

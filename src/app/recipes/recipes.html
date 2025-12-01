@@ -1,0 +1,173 @@
+<div class="recipes" @fadeInUp>
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <h1>Recipe Standards</h1>
+      <p>Manage product recipes and ingredient formulations</p>
+    </div>
+    <button class="btn-primary" (click)="addRecipe()">
+      <i class="icon">+</i>
+      Add Recipe
+    </button>
+  </div>
+
+  <!-- Recipes List -->
+  <div class="recipes-container">
+    <div *ngFor="let recipe of recipes; let i = index" class="recipe-card" @slideIn>
+      <!-- Recipe Header -->
+      <div class="recipe-header">
+        <div class="recipe-title">
+          <input 
+            [(ngModel)]="recipe.name" 
+            (blur)="saveRecipes()"
+            placeholder="Recipe Name"
+            class="recipe-name-input"
+          >
+        </div>
+        <button class="btn-danger" (click)="deleteRecipe(i)">
+          ×
+        </button>
+      </div>
+
+      <!-- Recipe Configuration -->
+      <div class="recipe-config">
+        <div class="config-item">
+          <label>Batch Size</label>
+          <input 
+            type="number" 
+            [(ngModel)]="recipe.batchSize" 
+            (blur)="saveRecipes()"
+            min="1"
+            class="config-input"
+          >
+        </div>
+        <div class="config-item">
+          <label>Expected Yield (kg)</label>
+          <input 
+            type="number" 
+            [(ngModel)]="recipe.yieldKg" 
+            (blur)="saveRecipes()"
+            step="0.1"
+            min="0"
+            class="config-input"
+          >
+        </div>
+        <div class="config-item">
+          <label>Cost per Batch</label>
+          <div class="cost-display">₱{{ calculateRecipeCost(recipe) | number:'1.2-2' }}</div>
+        </div>
+        <div class="config-item">
+          <label>Cost per kg</label>
+          <div class="cost-display">₱{{ calculateCostPerKg(recipe) | number:'1.2-2' }}</div>
+        </div>
+      </div>
+
+      <!-- Ingredients Table -->
+      <div class="ingredients-section">
+        <div class="section-header">
+          <h3>Ingredients</h3>
+          <button class="btn-secondary" (click)="addIngredient(i)">
+            <i class="icon">+</i>
+            Add Ingredient
+          </button>
+        </div>
+
+        <div class="table-container">
+          <table class="ingredients-table">
+            <thead>
+              <tr>
+                <th>Raw Material</th>
+                <th>SKU</th>
+                <th>Quantity per Batch</th>
+                <th>Unit Cost</th>
+                <th>Total Cost</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let ingredient of recipe.ingredients; let j = index">
+                <td>
+                  <select 
+                    [(ngModel)]="ingredient.sku" 
+                    (change)="onIngredientChange(i, j)"
+                    class="table-select"
+                  >
+                    <option value="">Select Material</option>
+                    <option 
+                      *ngFor="let material of rawMaterials" 
+                      [value]="material.sku"
+                    >
+                      {{ material.description }}
+                    </option>
+                  </select>
+                </td>
+                <td class="sku">{{ ingredient.sku || '-' }}</td>
+                <td>
+                  <input 
+                    type="number" 
+                    [(ngModel)]="ingredient.qty" 
+                    (blur)="saveRecipes()"
+                    step="0.001"
+                    min="0"
+                    class="table-input number"
+                  >
+                </td>
+                <td class="cost">₱{{ getMaterialCost(ingredient.sku) | number:'1.2-2' }}</td>
+                <td class="cost">₱{{ calculateIngredientCost(ingredient) | number:'1.2-2' }}</td>
+                <td class="actions">
+                  <button class="btn-danger small" (click)="deleteIngredient(i, j)">
+                    ×
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="recipe.ingredients.length === 0" class="empty-state">
+          <div class="empty-icon">🥄</div>
+          <p>No ingredients added yet</p>
+          <button class="btn-secondary" (click)="addIngredient(i)">
+            Add First Ingredient
+          </button>
+        </div>
+      </div>
+
+      <!-- Recipe Summary -->
+      <div class="recipe-summary">
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-label">Total Ingredients</div>
+            <div class="summary-value">{{ recipe.ingredients.length }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Batch Cost</div>
+            <div class="summary-value">₱{{ calculateRecipeCost(recipe) | number:'1.2-2' }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Cost per kg</div>
+            <div class="summary-value">₱{{ calculateCostPerKg(recipe) | number:'1.2-2' }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Yield Efficiency</div>
+            <div class="summary-value">{{ calculateEfficiency(recipe) }}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State for No Recipes -->
+  <div *ngIf="recipes.length === 0" class="empty-recipes" @fadeInUp>
+    <div class="empty-content">
+      <div class="empty-icon">👨‍🍳</div>
+      <h3>No Recipes Yet</h3>
+      <p>Create your first recipe to get started with production planning</p>
+      <button class="btn-primary" (click)="addRecipe()">
+        <i class="icon">+</i>
+        Create First Recipe
+      </button>
+    </div>
+  </div>
+</div>
