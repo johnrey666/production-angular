@@ -6,7 +6,6 @@
       <p>Product formulations and ingredient standards</p>
     </div>
     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-      <!-- Add Recipe Button -->
       <button class="btn-primary" (click)="openAddRecipeModal()">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -15,7 +14,6 @@
         Add Recipe
       </button>
 
-      <!-- Import Excel Button -->
       <label class="btn-primary" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -26,7 +24,6 @@
         <input type="file" accept=".xlsx,.xls" (change)="fileInputChange($event)" style="display: none;">
       </label>
 
-      <!-- DELETE ALL RECIPES BUTTON -->
       <button class="btn-danger" (click)="deleteAllRecipes()" title="Delete All Recipes" style="display: flex; align-items: center; gap: 6px;">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"></polyline>
@@ -66,12 +63,7 @@
         </div>
         <div class="snackbar-message">{{ snackbarMessage }}</div>
       </div>
-      <button class="snackbar-close" (click)="hideSnackbar()">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
+      <button class="snackbar-close" (click)="hideSnackbar()">X</button>
     </div>
   </div>
 
@@ -97,10 +89,14 @@
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
             <input type="text" class="form-input search-input" placeholder="Search recipes, SKUs, or premixes..."
-                   [(ngModel)]="searchQuery" (input)="applySearch()" style="padding-left: 36px;">
+                   [(ngModel)]="searchQuery" (input)="onSearchInput()" style="padding-left: 36px;">
           </div>
         </div>
-        <div class="item-count-badge">{{ allRecipes.length }} recipes</div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="item-count-badge">
+            {{ allRecipes.length }} recipe{{ allRecipes.length !== 1 ? 's' : '' }}
+          </div>
+        </div>
       </div>
 
       <div class="table-container">
@@ -116,9 +112,9 @@
           </thead>
           <tbody>
             <tr *ngIf="recipes.length === 0">
-              <td colspan="5" class="empty-state" style="text-align:center; padding: 60px;">
+              <td colspan="5" class="empty-state" style="text-align:center; padding: 80px;">
                 <div style="font-size: 64px; margin-bottom: 1rem;">No Recipes Found</div>
-                <h3 style="font-size: 18px; margin: 0.5rem 0;">No Recipes Found</h3>
+                <h3 style="font-size: 18px; margin: 0.5rem 0;">No matching recipes</h3>
                 <p style="color:#666; font-size: 16px;">Try adjusting your search or add a new recipe</p>
               </td>
             </tr>
@@ -171,6 +167,24 @@
           </tbody>
         </table>
       </div>
+
+      <!-- FIXED: Math.min now works in Angular templates -->
+      <div class="pagination" *ngIf="allRecipes.length > 0">
+        <div class="pagination-info">
+          Showing {{ ((currentPage - 1) * itemsPerPage) + 1 }}–{{ (currentPage * itemsPerPage > allRecipes.length ? allRecipes.length : currentPage * itemsPerPage) }} of {{ allRecipes.length }} recipe{{ allRecipes.length !== 1 ? 's' : '' }}
+        </div>
+        <div class="pagination-controls">
+          <button class="pagination-btn" (click)="previousPage()" [disabled]="currentPage === 1">
+            Previous
+          </button>
+          <div class="page-numbers">
+            <span class="current-page">{{ currentPage }}</span> of <span class="total-pages">{{ totalPages }}</span>
+          </div>
+          <button class="pagination-btn" (click)="nextPage()" [disabled]="currentPage === totalPages">
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -179,7 +193,7 @@
     <div class="modal-container" (click)="$event.stopPropagation()">
       <div class="modal-header">
         <h2 class="modal-title">{{ selectedRecipe.name }}</h2>
-        <button class="modal-close" (click)="closeDetailsModal()">×</button>
+        <button class="modal-close" (click)="closeDetailsModal()">X</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -194,8 +208,8 @@
               <tr>
                 <th>Name</th>
                 <th class="text-right">1B</th>
-                <th class="text-right">½B</th>
-                <th class="text-right">¼B</th>
+                <th class="text-right">1/2B</th>
+                <th class="text-right">1/4B</th>
               </tr>
             </thead>
             <tbody>
@@ -216,8 +230,8 @@
               <tr>
                 <th>Name</th>
                 <th class="text-right">1B</th>
-                <th class="text-right">½B</th>
-                <th class="text-right">¼B</th>
+                <th class="text-right">1/2B</th>
+                <th class="text-right">1/4B</th>
               </tr>
             </thead>
             <tbody>
@@ -233,9 +247,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" (click)="closeDetailsModal()">Close</button>
-        <button class="btn-primary" (click)="openEditRecipeModal(selectedRecipe)">
-          Edit Recipe
-        </button>
+        <button class="btn-primary" (click)="openEditRecipeModal(selectedRecipe)">Edit Recipe</button>
       </div>
     </div>
   </div>
@@ -245,7 +257,7 @@
     <div class="modal-container" (click)="$event.stopPropagation()" style="max-width: 800px; max-height: 90vh;">
       <div class="modal-header">
         <h2 class="modal-title">{{ editingRecipe.id ? 'Edit' : 'Add' }} Recipe</h2>
-        <button class="modal-close" (click)="closeRecipeModal()">×</button>
+        <button class="modal-close" (click)="closeRecipeModal()">X</button>
       </div>
 
       <div class="modal-body">
@@ -264,23 +276,16 @@
         <div class="section">
           <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h4>SKUs ({{ editingRecipe.skus.length }})</h4>
-            <button type="button" class="btn-secondary" (click)="addSku()">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Add SKU
-            </button>
+            <button type="button" class="btn-secondary" (click)="addSku()">Add SKU</button>
           </div>
-
           <div class="table-container" *ngIf="editingRecipe.skus.length > 0">
             <table class="form-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th class="text-right">1B</th>
-                  <th class="text-right">½B</th>
-                  <th class="text-right">¼B</th>
+                  <th class="text-right">1/2B</th>
+                  <th class="text-right">1/4B</th>
                   <th style="width: 50px;">Action</th>
                 </tr>
               </thead>
@@ -290,7 +295,7 @@
                   <td class="text-right"><input type="number" [(ngModel)]="s.quantity1b" min="0" step="0.001" class="form-input small text-right"></td>
                   <td class="text-right"><input type="number" [(ngModel)]="s.quantityhalfb" min="0" step="0.001" class="form-input small text-right"></td>
                   <td class="text-right"><input type="number" [(ngModel)]="s.quantityquarterb" min="0" step="0.001" class="form-input small text-right"></td>
-                  <td><button class="btn-icon-danger small" (click)="removeSku(i)" title="Remove">×</button></td>
+                  <td><button class="btn-icon-danger small" (click)="removeSku(i)" title="Remove">X</button></td>
                 </tr>
               </tbody>
             </table>
@@ -302,23 +307,16 @@
         <div class="section">
           <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h4>Premixes ({{ editingRecipe.premixes.length }})</h4>
-            <button type="button" class="btn-secondary" (click)="addPremix()">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Add Premix
-            </button>
+            <button type="button" class="btn-secondary" (click)="addPremix()">Add Premix</button>
           </div>
-
           <div class="table-container" *ngIf="editingRecipe.premixes.length > 0">
             <table class="form-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th class="text-right">1B</th>
-                  <th class="text-right">½B</th>
-                  <th class="text-right">¼B</th>
+                  <th class="text-right">1/2B</th>
+                  <th class="text-right">1/4B</th>
                   <th style="width: 50px;">Action</th>
                 </tr>
               </thead>
@@ -328,7 +326,7 @@
                   <td class="text-right"><input type="number" [(ngModel)]="p.quantity1b" min="0" step="0.001" class="form-input small text-right"></td>
                   <td class="text-right"><input type="number" [(ngModel)]="p.quantityhalfb" min="0" step="0.001" class="form-input small text-right"></td>
                   <td class="text-right"><input type="number" [(ngModel)]="p.quantityquarterb" min="0" step="0.001" class="form-input small text-right"></td>
-                  <td><button class="btn-icon-danger small" (click)="removePremix(i)" title="Remove">×</button></td>
+                  <td><button class="btn-icon-danger small" (click)="removePremix(i)" title="Remove">X</button></td>
                 </tr>
               </tbody>
             </table>

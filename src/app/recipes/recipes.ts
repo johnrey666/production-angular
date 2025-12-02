@@ -34,8 +34,10 @@ interface RecipeForm {
   styleUrls: ['./recipes.css']
 })
 export class RecipesComponent implements OnInit {
-  recipes: RecipeWithDetails[] = [];
-  allRecipes: RecipeWithDetails[] = [];
+  // Original arrays
+  recipes: RecipeWithDetails[] = [];           // ← This is what the table displays (filtered + paginated)
+  allRecipes: RecipeWithDetails[] = [];        // ← Full dataset from Supabase
+
   selectedRecipe: RecipeWithDetails | null = null;
   editingRecipe: RecipeForm = this.createEmptyRecipe();
 
@@ -49,6 +51,11 @@ export class RecipesComponent implements OnInit {
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
+
+  // Pagination
+  currentPage = 1;
+  itemsPerPage = 5;
+  totalPages = 1;
 
   private supabaseService = inject(SupabaseService);
   private cdr = inject(ChangeDetectorRef);
@@ -67,7 +74,7 @@ export class RecipesComponent implements OnInit {
     try {
       const data = await this.supabaseService.getAllRecipesWithDetails();
       this.allRecipes = data || [];
-      this.recipes = [...this.allRecipes];
+      this.applyFiltersAndPagination();
     } catch (error: any) {
       console.error('Error loading recipes:', error);
       this.errorMessage = 'Failed to load recipes. Please try again.';
@@ -80,17 +87,47 @@ export class RecipesComponent implements OnInit {
     }
   }
 
-  applySearch() {
-    if (!this.searchQuery.trim()) {
-      this.recipes = [...this.allRecipes];
-      return;
+  // NEW: Combined search + pagination
+  applyFiltersAndPagination() {
+    let filtered = [...this.allRecipes];
+
+    if (this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(recipe =>
+        recipe.name.toLowerCase().includes(q) ||
+        recipe.skus.some(sku => sku.name.toLowerCase().includes(q)) ||
+        recipe.premixes.some(premix => premix.name.toLowerCase().includes(q))
+      );
     }
-    const query = this.searchQuery.toLowerCase();
-    this.recipes = this.allRecipes.filter(recipe =>
-      recipe.name.toLowerCase().includes(query) ||
-      recipe.skus.some(sku => sku.name.toLowerCase().includes(query)) ||
-      recipe.premixes.some(premix => premix.name.toLowerCase().includes(query))
-    );
+
+    this.totalPages = Math.max(1, Math.ceil(filtered.length / this.itemsPerPage));
+    if (this.currentPage > this.totalPages) this.currentPage = this.totalPages;
+
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    const end = start + this.itemsPerPage;
+    this.recipes = filtered.slice(start, end);
+
+    this.cdr.detectChanges();
+  }
+
+  // Call this from search input
+  onSearchInput() {
+    this.currentPage = 1;
+    this.applyFiltersAndPagination();
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+      this.applyFiltersAndPagination();
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.applyFiltersAndPagination();
+    }
   }
 
   openAddRecipeModal() {
@@ -135,8 +172,7 @@ export class RecipesComponent implements OnInit {
   }
 
   addSku() {
-    this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quantityquarterb: 0 });
-  }
+this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quantityquarterb: 0 });  }
 
   removeSku(index: number) {
     this.editingRecipe.skus.splice(index, 1);
@@ -245,6 +281,7 @@ export class RecipesComponent implements OnInit {
       if (success) {
         this.allRecipes = [];
         this.recipes = [];
+        this.currentPage = 1;
         this.showSnackbar('All recipes deleted successfully', 'error');
       }
     } catch (error: any) {
@@ -314,7 +351,7 @@ export class RecipesComponent implements OnInit {
       const productName = String(row[0] || '').trim();
       if (!productName) continue;
 
-      const typeCell = String(row[1] || '').trim().toLowerCase(); // Column B
+      const typeCell = String(row[1] || '').trim().toLowerCase();
       const itemName = String(row[2] || '').trim();
       if (!itemName) continue;
 
