@@ -2,8 +2,8 @@ import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService, Material } from '../services/supabase.service';
+import * as XLSX from 'xlsx';
 
-// Define local interface that matches our HTML form
 interface LocalMaterial {
   id?: string;
   sku: string;
@@ -25,20 +25,41 @@ interface LocalMaterial {
 export class RawMaterialsComponent implements OnInit {
   materials: LocalMaterial[] = [];
   displayedMaterials: LocalMaterial[] = [];
-  isLoading: boolean = false;
-  errorMessage: string = '';
-  
-  // Modal properties
-  showModal: boolean = false;
-  isEditing: boolean = false;
+  allMaterials: LocalMaterial[] = [];
+
+  isLoading = false;
+  errorMessage = '';
+
+  // Search & Filter
+  searchQuery = '';
+  selectedFilterCategory = '';
+
+  // Modal
+  showModal = false;
+  isEditing = false;
   currentMaterial: LocalMaterial = this.createEmptyMaterial();
-  
-  // Pagination properties
-  currentPage: number = 1;
-  itemsPerPage: number = 8;
-  totalPages: number = 1;
-  startIndex: number = 0;
-  endIndex: number = 0;
+  selectedCategory = '';
+  customCategory = '';
+
+  // Pagination
+  currentPage = 1;
+  itemsPerPage = 5;
+  totalPages = 1;
+  startIndex = 0;
+  endIndex = 0;
+
+  // Snackbar
+  snackbarMessage = '';
+  snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
+  snackbarTimeout: any;
+
+  private fixedCategories = [
+    'Spices (Vatable)',
+    'Meat & Veg (Non VAT)',
+    'Packaging',
+    'Cleaning Materials',
+    'R&D Materials'
+  ];
 
   constructor(
     private supabase: SupabaseService,
@@ -51,17 +72,8 @@ export class RawMaterialsComponent implements OnInit {
 
   async loadMaterials() {
     this.isLoading = true;
-    this.errorMessage = '';
-    
-    // Force immediate UI update
-    this.cdr.detectChanges();
-    
-    // Add a small delay to ensure UI updates
-    await new Promise(resolve => setTimeout(resolve, 0));
-    
     try {
       const data = await this.supabase.getMaterials();
-      
       if (data && Array.isArray(data)) {
         this.materials = data.map((item: Material) => ({
           id: item.id,
@@ -73,27 +85,53 @@ export class RawMaterialsComponent implements OnInit {
           currentStock: item.current_stock || 0,
           createdAt: item.created_at
         }));
-        
-        this.updatePagination();
-      } else {
-        this.materials = [];
-        this.displayedMaterials = [];
+        this.allMaterials = [...this.materials];
+        this.applyFiltersAndSearch();
       }
     } catch (error: any) {
-      this.errorMessage = 'Failed to load materials. Please try again.';
-      this.materials = [];
-      this.displayedMaterials = [];
+      this.errorMessage = 'Failed to load materials.';
+      this.showSnackbar('Failed to load materials', 'error');
     } finally {
       this.isLoading = false;
-      
-      // Force UI update after loading completes
       this.cdr.detectChanges();
     }
   }
 
-  // Pagination methods
+  applyFiltersAndSearch() {
+    let filtered = [...this.allMaterials];
+
+    // Search
+    if (this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(m =>
+        (m.sku?.toLowerCase().includes(q) || false) ||
+        (m.description?.toLowerCase().includes(q) || false)
+      );
+    }
+
+    // Category filter
+    if (this.selectedFilterCategory && this.selectedFilterCategory !== '') {
+      filtered = filtered.filter(m => m.category === this.selectedFilterCategory);
+    }
+
+    this.materials = filtered;
+    this.currentPage = 1;
+    this.updatePagination();
+  }
+
+  get uniqueCategories(): string[] {
+    const categories = new Set<string>();
+    for (const material of this.allMaterials) {
+      if (material && material.category) {
+        categories.add(material.category);
+      }
+    }
+    return Array.from(categories).sort();
+  }
+
   updatePagination() {
-    this.totalPages = Math.ceil(this.materials.length / this.itemsPerPage);
+    this.totalPages = Math.max(Math.ceil(this.materials.length / this.itemsPerPage), 1);
+    
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
       this.currentPage = this.totalPages;
     }
@@ -101,202 +139,300 @@ export class RawMaterialsComponent implements OnInit {
     this.startIndex = (this.currentPage - 1) * this.itemsPerPage;
     this.endIndex = Math.min(this.startIndex + this.itemsPerPage, this.materials.length);
     this.displayedMaterials = this.materials.slice(this.startIndex, this.endIndex);
+    
+    this.cdr.detectChanges();
   }
 
-  nextPage() {
-    if (this.currentPage < this.totalPages) {
-      this.currentPage++;
-      this.updatePagination();
+  nextPage() { 
+    if (this.currentPage < this.totalPages) { 
+      this.currentPage++; 
+      this.updatePagination(); 
+    }
+  }
+  
+  previousPage() { 
+    if (this.currentPage > 1) { 
+      this.currentPage--; 
+      this.updatePagination(); 
     }
   }
 
-  previousPage() {
-    if (this.currentPage > 1) {
-      this.currentPage--;
-      this.updatePagination();
-    }
-  }
-
-  // Create empty material template
   createEmptyMaterial(): LocalMaterial {
-    return {
-      sku: '',
-      description: '',
-      unitCost: 0,
-      costPerKg: 0,
-      category: '',
-      currentStock: 0
+    return { 
+      sku: '', 
+      description: '', 
+      unitCost: 0, 
+      costPerKg: 0, 
+      category: '', 
+      currentStock: 0 
     };
   }
 
-  // Open modal for adding new material
   openAddModal() {
     this.currentMaterial = this.createEmptyMaterial();
     this.isEditing = false;
+    this.selectedCategory = '';
+    this.customCategory = '';
     this.showModal = true;
-    this.cdr.detectChanges();
   }
 
-  // Open modal for editing existing material
   openEditModal(material: LocalMaterial) {
-    this.currentMaterial = {
-      id: material.id,
-      sku: material.sku,
-      description: material.description,
-      unitCost: material.unitCost,
-      costPerKg: material.costPerKg,
-      category: material.category,
-      currentStock: material.currentStock,
-      createdAt: material.createdAt
-    };
+    this.currentMaterial = { ...material };
     this.isEditing = true;
+
+    if (this.fixedCategories.includes(material.category)) {
+      this.selectedCategory = material.category;
+      this.customCategory = '';
+    } else {
+      this.selectedCategory = 'Others';
+      this.customCategory = material.category || '';
+    }
     this.showModal = true;
-    this.cdr.detectChanges();
   }
 
-  // Close modal
   closeModal() {
     this.showModal = false;
+    this.selectedCategory = '';
+    this.customCategory = '';
     this.currentMaterial = this.createEmptyMaterial();
+  }
+
+  onCategoryChange() {
+    if (this.selectedCategory !== 'Others') {
+      this.customCategory = '';
+    }
+  }
+
+  // Snackbar methods
+  showSnackbar(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') {
+    // Clear any existing timeout
+    if (this.snackbarTimeout) {
+      clearTimeout(this.snackbarTimeout);
+    }
+    
+    // Set new message and type
+    this.snackbarMessage = message;
+    this.snackbarType = type;
+    
+    // Auto hide after 3 seconds
+    this.snackbarTimeout = setTimeout(() => {
+      this.hideSnackbar();
+    }, 3000);
+    
     this.cdr.detectChanges();
   }
 
-  // Save material (both new and edit)
+  hideSnackbar() {
+    this.snackbarMessage = '';
+    if (this.snackbarTimeout) {
+      clearTimeout(this.snackbarTimeout);
+      this.snackbarTimeout = null;
+    }
+    this.cdr.detectChanges();
+  }
+
   async saveMaterial() {
-    // Validate required fields
-    if (!this.currentMaterial.sku || !this.currentMaterial.description) {
-      alert('SKU and Description are required fields.');
+    if (!this.currentMaterial.sku?.trim() || !this.currentMaterial.description?.trim()) {
+      this.showSnackbar('SKU and Description are required', 'warning');
       return;
     }
-    
-    // Prepare data for Supabase
+    if (!this.selectedCategory) {
+      this.showSnackbar('Please select a category', 'warning');
+      return;
+    }
+
+    const finalCategory = this.selectedCategory === 'Others'
+      ? (this.customCategory?.trim() || '')
+      : this.selectedCategory;
+
+    if (this.selectedCategory === 'Others' && !finalCategory) {
+      this.showSnackbar('Please specify the custom category', 'warning');
+      return;
+    }
+
+    this.currentMaterial.category = finalCategory;
+
     const dbMaterial: Material = {
       sku: this.currentMaterial.sku.trim(),
       description: this.currentMaterial.description.trim(),
       unit_cost: this.currentMaterial.unitCost || 0,
       cost_per_kg: this.currentMaterial.costPerKg || 0,
-      category: this.currentMaterial.category || '',
+      category: finalCategory,
       current_stock: this.currentMaterial.currentStock || 0
     };
-    
-    // Add ID if editing
+
     if (this.isEditing && this.currentMaterial.id) {
       dbMaterial.id = this.currentMaterial.id;
     }
-    
+
     try {
       const result = await this.supabase.saveMaterial(dbMaterial);
-      
       if (result && result.length > 0) {
         const savedMaterial = result[0];
-        
-        if (this.isEditing) {
-          // Update existing material in the array
-          const index = this.materials.findIndex(m => m.id === savedMaterial.id);
+        const localMaterial: LocalMaterial = {
+          id: savedMaterial.id,
+          sku: savedMaterial.sku || '',
+          description: savedMaterial.description || '',
+          unitCost: savedMaterial.unit_cost || 0,
+          costPerKg: savedMaterial.cost_per_kg || 0,
+          category: savedMaterial.category || '',
+          currentStock: savedMaterial.current_stock || 0,
+          createdAt: savedMaterial.created_at
+        };
+
+        if (this.isEditing && this.currentMaterial.id) {
+          const index = this.allMaterials.findIndex(m => m.id === this.currentMaterial.id);
           if (index !== -1) {
-            this.materials[index] = {
-              id: savedMaterial.id,
-              sku: savedMaterial.sku,
-              description: savedMaterial.description,
-              unitCost: savedMaterial.unit_cost,
-              costPerKg: savedMaterial.cost_per_kg,
-              category: savedMaterial.category,
-              currentStock: savedMaterial.current_stock,
-              createdAt: savedMaterial.created_at
-            };
+            this.allMaterials[index] = localMaterial;
           }
+          this.showSnackbar(`Material "${this.currentMaterial.sku}" updated successfully`, 'success');
         } else {
-          // Add new material to the array
-          this.materials.unshift({
-            id: savedMaterial.id,
-            sku: savedMaterial.sku,
-            description: savedMaterial.description,
-            unitCost: savedMaterial.unit_cost,
-            costPerKg: savedMaterial.cost_per_kg,
-            category: savedMaterial.category,
-            currentStock: savedMaterial.current_stock,
-            createdAt: savedMaterial.created_at
-          });
+          this.allMaterials.unshift(localMaterial);
+          this.showSnackbar(`Material "${this.currentMaterial.sku}" added successfully`, 'success');
         }
-        
-        // Update pagination
-        this.updatePagination();
-        
-        // Close modal and refresh UI
+
+        this.applyFiltersAndSearch();
         this.closeModal();
-        this.cdr.detectChanges();
-      } else {
-        alert('Failed to save material. Please try again.');
       }
     } catch (error: any) {
-      console.error('Error saving material:', error);
-      alert('Error saving material: ' + error.message);
+      console.error('Save error:', error);
+      this.showSnackbar(`Failed to ${this.isEditing ? 'update' : 'add'} material`, 'error');
     }
   }
 
   async deleteMaterial(material: LocalMaterial) {
-    // Confirm deletion
-    if (!confirm(`Are you sure you want to delete "${material.description}"?`)) {
+    if (!confirm(`Are you sure you want to delete "${material.sku}"?`)) return;
+    if (!material.id) {
+      this.showSnackbar('Cannot delete: Material ID not found', 'error');
       return;
     }
+
+    // Store the sku before deletion for the snackbar
+    const deletedSku = material.sku;
     
     try {
-      if (material.id) {
-        const success = await this.supabase.deleteMaterial(material.id);
-        
-        if (success) {
-          // Remove from local array
-          const index = this.materials.findIndex(m => m.id === material.id);
-          if (index !== -1) {
-            this.materials.splice(index, 1);
-            this.updatePagination();
-            this.cdr.detectChanges();
-          }
-        } else {
-          alert('Failed to delete material. Please try again.');
-        }
-      }
+      await this.supabase.deleteMaterial(material.id);
+      
+      // Remove from arrays
+      this.allMaterials = this.allMaterials.filter(m => m.id !== material.id);
+      
+      // Update display immediately
+      this.applyFiltersAndSearch();
+      
+      // Show snackbar immediately
+      this.showSnackbar(`Material "${deletedSku}" deleted successfully`, 'error'); // Red for delete
+      
     } catch (error: any) {
-      alert('Error deleting material: ' + error.message);
+      console.error('Delete error:', error);
+      this.showSnackbar(`Failed to delete material`, 'error');
     }
   }
 
-  // Refresh data from database
+  async deleteAllMaterials() {
+    if (!confirm('⚠️ DELETE EVERYTHING?\nThis will permanently delete ALL raw materials.\nAre you absolutely sure?')) {
+      return;
+    }
+    if (!confirm('LAST CHANCE!\nThis action cannot be undone.\nType "DELETE" to confirm:')) {
+      return;
+    }
+    if (prompt('Type DELETE to confirm:') !== 'DELETE') {
+      return;
+    }
+
+    this.isLoading = true;
+    try {
+      await this.supabase.deleteAllMaterials();
+      
+      // Clear all arrays
+      this.allMaterials = [];
+      this.materials = [];
+      this.displayedMaterials = [];
+      
+      // Reset pagination
+      this.currentPage = 1;
+      this.updatePagination();
+      
+      // Show snackbar immediately
+      this.showSnackbar('All materials deleted successfully', 'error'); // Red for delete
+    } catch (error: any) {
+      console.error('Delete all error:', error);
+      this.showSnackbar(`Failed to delete all materials`, 'error');
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  async fileInputChange(event: any) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    this.isLoading = true;
+    this.cdr.detectChanges();
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+      const materialsToImport: Material[] = rows.slice(1)
+        .filter((row: any) => row && row.length > 0)
+        .map((row: any) => {
+          const rawCat = String(row[4] || '').trim().toUpperCase();
+          let category = 'Uncategorized';
+          
+          if (rawCat.includes('SPICES')) category = 'Spices (Vatable)';
+          else if (rawCat.includes('MEAT') || rawCat.includes('VEGETABLES')) category = 'Meat & Veg (Non VAT)';
+          else if (rawCat.includes('PACKAGING')) category = 'Packaging';
+          else if (rawCat.includes('CLEANING')) category = 'Cleaning Materials';
+          else if (rawCat.includes('R&D')) category = 'R&D Materials';
+          else if (rawCat) category = rawCat;
+
+          return {
+            sku: String(row[0] || '').trim(),
+            description: String(row[1] || '').trim(),
+            unit_cost: parseFloat(row[2]) || 0,
+            cost_per_kg: parseFloat(row[3]) || 0,
+            category,
+            current_stock: 0
+          };
+        })
+        .filter(m => m.sku && m.description);
+
+      if (materialsToImport.length === 0) {
+        this.showSnackbar('No valid data found in the Excel file', 'warning');
+        return;
+      }
+
+      const result = await this.supabase.bulkUpsertMaterials(materialsToImport);
+      
+      if (result && Array.isArray(result)) {
+        const importedLocalMaterials: LocalMaterial[] = result.map((item: Material) => ({
+          id: item.id,
+          sku: item.sku || '',
+          description: item.description || '',
+          unitCost: item.unit_cost || 0,
+          costPerKg: item.cost_per_kg || 0,
+          category: item.category || '',
+          currentStock: item.current_stock || 0,
+          createdAt: item.created_at
+        }));
+        
+        this.allMaterials = [...importedLocalMaterials, ...this.allMaterials];
+        this.applyFiltersAndSearch();
+        
+        this.showSnackbar(`Successfully imported ${materialsToImport.length} materials`, 'success'); // Green for import
+      }
+    } catch (error: any) {
+      console.error('Import error:', error);
+      this.showSnackbar(`Import failed: ${error.message}`, 'error');
+    } finally {
+      this.isLoading = false;
+      event.target.value = '';
+    }
+  }
+
   async refresh() {
     await this.loadMaterials();
   }
-
-  // Calculation methods
-  calculateTotalValue() {
-    return this.materials.reduce((sum, m) => sum + ((m.unitCost || 0) * (m.currentStock || 0)), 0);
-  }
-
-  getLowStockCount() {
-    return this.materials.filter(m => (m.currentStock || 0) < 10).length;
-  }
-
-  getCategories() {
-    return [...new Set(this.materials.map(m => m.category).filter(Boolean))];
-  }
-
-getStockStatus(material: any): string {
-  if (!material.currentStock || material.currentStock === 0) {
-    return 'out-of-stock';
-  }
-  if (material.currentStock < 5) { // adjust threshold here
-    return 'low-stock';
-  }
-  return 'in-stock';
-}
-
-getStockStatusText(material: any): string {
-  if (!material.currentStock || material.currentStock === 0) {
-    return 'No Stock';
-  }
-  if (material.currentStock < 5) {
-    return 'Low Stock';
-  }
-  return 'In Stock';
-}
-
 }

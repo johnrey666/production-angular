@@ -14,14 +14,6 @@ export interface Material {
   created_at?: string;
 }
 
-export interface Recipe {
-  id?: string;
-  name: string;
-  batch_size: number;
-  yield_kg: number;
-  created_at?: string;
-}
-
 export interface ProductionLog {
   id?: string;
   date: string;
@@ -48,6 +40,34 @@ export interface UserWithoutPassword {
   username: string;
   full_name: string;
   role: string;
+  created_at?: string;
+}
+
+// Update the existing Recipe interface
+export interface Recipe {
+  id?: string;
+  name: string;
+  batch_size: number;
+  yield_kg: number;
+  std_yield?: number; // Add this
+  created_at?: string;
+}
+
+// Update RecipeWithDetails interface
+export interface RecipeWithDetails extends Recipe {
+  skus: RecipeItem[];
+  premixes: RecipeItem[];
+}
+
+// RecipeItem interface - UPDATED WITH LOWERCASE COLUMN NAMES
+export interface RecipeItem {
+  id?: string;
+  recipe_id: string;
+  name: string;
+  type: 'sku' | 'premix';
+  quantity1b: number;       // lowercase
+  quantityhalfb: number;    // lowercase
+  quantityquarterb: number; // lowercase
   created_at?: string;
 }
 
@@ -221,30 +241,46 @@ export class SupabaseService {
 
   async saveRecipe(recipe: Recipe): Promise<Recipe[] | null> {
     try {
+      console.log('Saving recipe:', recipe);
+      
+      const payload: any = {
+        name: recipe.name.trim(),
+        batch_size: recipe.batch_size ?? 1,
+        yield_kg: recipe.yield_kg ?? 0,
+      };
+
+      // Only include std_yield if it's a real number (not null/undefined)
+      if (recipe.std_yield !== undefined && recipe.std_yield !== null) {
+        payload.std_yield = recipe.std_yield;
+      }
+
+      let result;
       if (recipe.id) {
-        const { data, error } = await this.supabase
+        // UPDATE existing recipe
+        console.log('Updating existing recipe with ID:', recipe.id);
+        result = await this.supabase
           .from('recipes')
-          .update(recipe)
+          .update(payload)
           .eq('id', recipe.id)
           .select();
-        
-        if (error) {
-          console.error('Supabase error in saveRecipe:', error);
-          return null;
-        }
-        return data;
       } else {
-        const { data, error } = await this.supabase
+        // INSERT new recipe – DO NOT send id at all
+        console.log('Inserting new recipe');
+        result = await this.supabase
           .from('recipes')
-          .insert([recipe])
+          .insert(payload)
           .select();
-        
-        if (error) {
-          console.error('Supabase error in saveRecipe:', error);
-          return null;
-        }
-        return data;
       }
+
+      console.log('Supabase save recipe result:', result);
+
+      if (result.error) {
+        console.error('Supabase error in saveRecipe:', result.error);
+        throw result.error;
+      }
+      
+      console.log('Recipe saved successfully:', result.data);
+      return result.data;
     } catch (error) {
       console.error('Error in saveRecipe:', error);
       return null;
@@ -569,6 +605,479 @@ export class SupabaseService {
     } catch (error) {
       console.error('Error in getMaterialStatistics:', error);
       return null;
+    }
+  }
+
+  async bulkUpsertMaterials(materials: Material[]): Promise<Material[]> {
+    const { data, error } = await this.supabase
+      .from('materials')
+      .upsert(materials, { onConflict: 'sku' })
+      .select('*'); // IMPORTANT: ensures Supabase returns rows
+
+    if (error) throw error;
+    return data as Material[]; // Ensures correct typing
+  }
+
+  async deleteAllMaterials() {
+    const { error } = await this.supabase
+      .from('materials')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // deletes all
+
+    if (error) throw error;
+  }
+
+  // ===== RECIPE ITEMS (SKUs & Premixes) =====
+  async getRecipeItems(recipeId: string): Promise<RecipeItem[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('recipe_items')
+        .select('*')
+        .eq('recipe_id', recipeId)
+        .order('created_at');
+      
+      if (error) {
+        console.error('Supabase error in getRecipeItems:', error);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Error in getRecipeItems:', error);
+      return [];
+    }
+  }
+
+  async saveRecipeItem(item: RecipeItem): Promise<RecipeItem[] | null> {
+    try {
+      console.log('Saving recipe item:', item);
+      if (item.id) {
+        // Update existing - USE LOWERCASE COLUMN NAMES
+        const { data, error } = await this.supabase
+          .from('recipe_items')
+          .update({
+            name: item.name,
+            type: item.type,
+            quantity1b: item.quantity1b,       // lowercase
+            quantityhalfb: item.quantityhalfb, // lowercase
+            quantityquarterb: item.quantityquarterb // lowercase
+          })
+          .eq('id', item.id)
+          .select();
+        
+        if (error) {
+          console.error('Supabase error in saveRecipeItem (update):', error);
+          return null;
+        }
+        return data;
+      } else {
+        // Insert new - USE LOWERCASE COLUMN NAMES
+        const { data, error } = await this.supabase
+          .from('recipe_items')
+          .insert([{
+            recipe_id: item.recipe_id,
+            name: item.name,
+            type: item.type,
+            quantity1b: item.quantity1b,       // lowercase
+            quantityhalfb: item.quantityhalfb, // lowercase
+            quantityquarterb: item.quantityquarterb // lowercase
+          }])
+          .select();
+        
+        if (error) {
+          console.error('Supabase error in saveRecipeItem (insert):', error);
+          return null;
+        }
+        return data;
+      }
+    } catch (error) {
+      console.error('Error in saveRecipeItem:', error);
+      return null;
+    }
+  }
+
+  async bulkSaveRecipeItems(items: RecipeItem[]): Promise<RecipeItem[] | null> {
+    try {
+      console.log('Bulk saving recipe items:', items.length);
+      
+      // Remove IDs for new items to let Supabase generate them - USE LOWERCASE COLUMN NAMES
+      const itemsToInsert = items.map(item => ({
+        recipe_id: item.recipe_id,
+        name: item.name,
+        type: item.type,
+        quantity1b: item.quantity1b,       // lowercase
+        quantityhalfb: item.quantityhalfb, // lowercase
+        quantityquarterb: item.quantityquarterb // lowercase
+      }));
+      
+      const { data, error } = await this.supabase
+        .from('recipe_items')
+        .insert(itemsToInsert)
+        .select();
+      
+      if (error) {
+        console.error('Supabase error in bulkSaveRecipeItems:', error);
+        return null;
+      }
+      return data;
+    } catch (error) {
+      console.error('Error in bulkSaveRecipeItems:', error);
+      return null;
+    }
+  }
+
+  async deleteRecipeItem(id: string): Promise<boolean> {
+    try {
+      console.log('Deleting recipe item ID:', id);
+      const { error } = await this.supabase
+        .from('recipe_items')
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Supabase error in deleteRecipeItem:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error in deleteRecipeItem:', error);
+      return false;
+    }
+  }
+
+  async deleteRecipeItems(recipeId: string): Promise<boolean> {
+    try {
+      console.log('Deleting all recipe items for recipe:', recipeId);
+      const { error } = await this.supabase
+        .from('recipe_items')
+        .delete()
+        .eq('recipe_id', recipeId);
+      
+      if (error) {
+        console.error('Supabase error in deleteRecipeItems:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error in deleteRecipeItems:', error);
+      return false;
+    }
+  }
+
+  // ===== ENHANCED RECIPE FUNCTIONS =====
+  async deleteRecipe(id: string): Promise<boolean> {
+    try {
+      console.log('Deleting recipe ID:', id);
+      
+      // First delete recipe items (due to foreign key constraint)
+      await this.deleteRecipeItems(id);
+      
+      // Then delete the recipe
+      const { error } = await this.supabase
+        .from('recipes')
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Supabase error in deleteRecipe:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error in deleteRecipe:', error);
+      return false;
+    }
+  }
+
+  async getRecipeWithDetails(recipeId: string): Promise<RecipeWithDetails | null> {
+    try {
+      console.log('Getting recipe details for ID:', recipeId);
+      
+      // Get recipe
+      const { data: recipeData, error: recipeError } = await this.supabase
+        .from('recipes')
+        .select('*')
+        .eq('id', recipeId)
+        .single();
+      
+      if (recipeError) {
+        console.error('Supabase error getting recipe:', recipeError);
+        return null;
+      }
+
+      console.log('Recipe data retrieved:', recipeData);
+      
+      // Get recipe items
+      const { data: itemsData, error: itemsError } = await this.supabase
+        .from('recipe_items')
+        .select('*')
+        .eq('recipe_id', recipeId);
+      
+      if (itemsError) {
+        console.error('Supabase error getting recipe items:', itemsError);
+        return null;
+      }
+
+      console.log('Recipe items retrieved:', itemsData);
+      
+      // Separate SKUs and Premixes
+      const skus = itemsData.filter(item => item.type === 'sku');
+      const premixes = itemsData.filter(item => item.type === 'premix');
+
+      console.log(`Found ${skus.length} SKUs and ${premixes.length} premixes`);
+      
+      return {
+        id: recipeData.id,
+        name: recipeData.name,
+        std_yield: recipeData.std_yield,
+        batch_size: recipeData.batch_size,
+        yield_kg: recipeData.yield_kg,
+        created_at: recipeData.created_at,
+        skus: skus,
+        premixes: premixes
+      };
+    } catch (error) {
+      console.error('Error in getRecipeWithDetails:', error);
+      return null;
+    }
+  }
+
+  async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
+    try {
+      console.log('Getting all recipes with details...');
+      
+      // Get all recipes
+      const recipes = await this.getRecipes();
+      console.log(`Found ${recipes.length} recipes`);
+      
+      // Get details for each recipe
+      const recipesWithDetails = await Promise.all(
+        recipes.map(async (recipe) => {
+          if (!recipe.id) {
+            console.warn('Recipe without ID:', recipe);
+            return {
+              id: undefined,
+              name: recipe.name,
+              std_yield: recipe.std_yield,
+              batch_size: recipe.batch_size,
+              yield_kg: recipe.yield_kg,
+              created_at: recipe.created_at,
+              skus: [],
+              premixes: []
+            };
+          }
+          
+          const items = await this.getRecipeItems(recipe.id);
+          console.log(`Recipe ${recipe.id} - ${recipe.name} has ${items.length} items`);
+          
+          return {
+            id: recipe.id,
+            name: recipe.name,
+            std_yield: recipe.std_yield,
+            batch_size: recipe.batch_size,
+            yield_kg: recipe.yield_kg,
+            created_at: recipe.created_at,
+            skus: items.filter(item => item.type === 'sku'),
+            premixes: items.filter(item => item.type === 'premix')
+          };
+        })
+      );
+      
+      console.log(`Returning ${recipesWithDetails.length} recipes with details`);
+      return recipesWithDetails;
+      
+    } catch (error) {
+      console.error('Error in getAllRecipesWithDetails:', error);
+      return [];
+    }
+  }
+
+  async saveRecipeWithItems(recipe: RecipeWithDetails): Promise<RecipeWithDetails | null> {
+    try {
+      console.log('=== STARTING saveRecipeWithItems ===');
+      console.log('Input recipe:', JSON.stringify(recipe, null, 2));
+      
+      // Step 1: Save the main recipe
+      const recipePayload: Recipe = {
+        id: recipe.id,
+        name: recipe.name.trim(),
+        std_yield: recipe.std_yield ?? 0,
+        batch_size: recipe.batch_size ?? 1,
+        yield_kg: recipe.yield_kg ?? 0,
+      };
+
+      console.log('Recipe payload for save:', recipePayload);
+
+      const savedRecipe = await this.saveRecipe(recipePayload);
+      if (!savedRecipe || savedRecipe.length === 0) {
+        console.error('Failed to save main recipe');
+        return null;
+      }
+
+      const recipeId = savedRecipe[0].id!;
+      console.log('Saved recipe ID:', recipeId);
+
+      // Step 2: Delete old items only when editing (not on create)
+      if (recipe.id) {
+        console.log('Editing existing recipe, deleting old items...');
+        await this.deleteRecipeItems(recipeId);
+      }
+
+      // Step 3: Prepare items for insertion - USE LOWERCASE COLUMN NAMES
+      const itemsToInsert: any[] = [];
+      
+      // Filter out empty SKUs and add them to insertion array
+      if (recipe.skus && recipe.skus.length > 0) {
+        const validSkus = recipe.skus.filter(sku => sku.name && sku.name.trim() !== '');
+        console.log(`Adding ${validSkus.length} valid SKUs out of ${recipe.skus.length} total`);
+        
+        validSkus.forEach((sku, index) => {
+          // Use lowercase column names to match database schema
+          const item = {
+            recipe_id: recipeId,
+            name: sku.name.trim(),
+            type: 'sku',
+            quantity1b: Number(sku.quantity1b) || 0,        // lowercase
+            quantityhalfb: Number(sku.quantityhalfb) || 0,  // lowercase
+            quantityquarterb: Number(sku.quantityquarterb) || 0 // lowercase
+          };
+          console.log(`SKU ${index + 1}:`, item);
+          itemsToInsert.push(item);
+        });
+      } else {
+        console.log('No SKUs provided');
+      }
+
+      // Filter out empty premixes and add them to insertion array
+      if (recipe.premixes && recipe.premixes.length > 0) {
+        const validPremixes = recipe.premixes.filter(premix => premix.name && premix.name.trim() !== '');
+        console.log(`Adding ${validPremixes.length} valid premixes out of ${recipe.premixes.length} total`);
+        
+        validPremixes.forEach((premix, index) => {
+          // Use lowercase column names to match database schema
+          const item = {
+            recipe_id: recipeId,
+            name: premix.name.trim(),
+            type: 'premix',
+            quantity1b: Number(premix.quantity1b) || 0,        // lowercase
+            quantityhalfb: Number(premix.quantityhalfb) || 0,  // lowercase
+            quantityquarterb: Number(premix.quantityquarterb) || 0 // lowercase
+          };
+          console.log(`Premix ${index + 1}:`, item);
+          itemsToInsert.push(item);
+        });
+      } else {
+        console.log('No premixes provided');
+      }
+
+      console.log(`Total items to insert: ${itemsToInsert.length}`, JSON.stringify(itemsToInsert, null, 2));
+
+      // Step 4: Insert items (only if there are any)
+      if (itemsToInsert.length > 0) {
+        console.log('Inserting items into recipe_items table...');
+        const { data, error } = await this.supabase
+          .from('recipe_items')
+          .insert(itemsToInsert)
+          .select();
+
+        if (error) {
+          console.error('Error inserting recipe items:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
+          console.error('Error message:', error.message);
+          console.error('Error details:', error.details);
+          console.error('Error hint:', error.hint);
+          console.error('Error code:', error.code);
+          throw error;
+        }
+        console.log('Items inserted successfully:', data);
+      } else {
+        console.log('No items to insert (all were empty or filtered out)');
+      }
+
+      // Step 5: Return fresh data
+      console.log('Fetching updated recipe details...');
+      const updatedRecipe = await this.getRecipeWithDetails(recipeId);
+      console.log('Updated recipe:', updatedRecipe);
+      console.log('=== COMPLETED saveRecipeWithItems ===');
+      return updatedRecipe;
+      
+    } catch (error: any) {
+      console.error('Error in saveRecipeWithItems:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      if (error.message) console.error('Error message:', error.message);
+      if (error.details) console.error('Error details:', error.details);
+      if (error.hint) console.error('Error hint:', error.hint);
+      if (error.code) console.error('Error code:', error.code);
+      return null;
+    }
+  }
+
+  // Add this method to check your table structure
+  async checkRecipeItemsTable(): Promise<void> {
+    try {
+      console.log('Checking recipe_items table structure...');
+      
+      // Try to get column information
+      const { data, error } = await this.supabase
+        .from('recipe_items')
+        .select('*')
+        .limit(1);
+      
+      if (error) {
+        console.error('Error accessing recipe_items table:', error);
+        console.error('This might mean the table does not exist or you lack permissions');
+      } else {
+        console.log('recipe_items table accessible. Sample row:', data);
+      }
+      
+      // Check if we can insert a simple test item
+      const testItem = {
+        recipe_id: '00000000-0000-0000-0000-000000000000', // dummy ID
+        name: 'Test Item',
+        type: 'sku',
+        quantity1b: 0,       // lowercase
+        quantityhalfb: 0,    // lowercase
+        quantityquarterb: 0, // lowercase
+      };
+      
+      console.log('Testing insert with dummy data:', testItem);
+      
+    } catch (error) {
+      console.error('Error checking table:', error);
+    }
+  }
+
+    // ===== BULK DELETE RECIPES =====
+  async deleteAllRecipes(): Promise<boolean> {
+    try {
+      console.log('Deleting ALL recipes and their items...');
+
+      // First delete all recipe_items (child records)
+      const { error: itemsError } = await this.supabase
+        .from('recipe_items')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // deletes all
+
+      if (itemsError) {
+        console.error('Error deleting recipe_items:', itemsError);
+        throw itemsError;
+      }
+
+      // Then delete all recipes
+      const { error: recipesError } = await this.supabase
+        .from('recipes')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (recipesError) {
+        console.error('Error deleting recipes:', recipesError);
+        throw recipesError;
+      }
+
+      console.log('All recipes and items deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error in deleteAllRecipes:', error);
+      return false;
     }
   }
 }

@@ -1,207 +1,348 @@
-<div class="recipes" @fadeInUp>
+<div class="recipes">
   <!-- Header -->
   <div class="page-header">
     <div>
       <h1>Recipes</h1>
       <p>Product formulations and ingredient standards</p>
     </div>
-    <button class="btn-primary" (click)="addRecipe()">
-      <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      New Recipe
-    </button>
+    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+      <!-- Add Recipe Button -->
+      <button class="btn-primary" (click)="openAddRecipeModal()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Add Recipe
+      </button>
+
+      <!-- Import Excel Button -->
+      <label class="btn-primary" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        Import Excel
+        <input type="file" accept=".xlsx,.xls" (change)="fileInputChange($event)" style="display: none;">
+      </label>
+
+      <!-- DELETE ALL RECIPES BUTTON -->
+      <button class="btn-danger" (click)="deleteAllRecipes()" title="Delete All Recipes" style="display: flex; align-items: center; gap: 6px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+        Delete All
+      </button>
+    </div>
   </div>
 
-  <!-- Recipes List -->
-  <div class="recipes-container">
-    <div *ngFor="let recipe of recipes; let i = index" class="recipe-card" @slideIn>
-      <!-- Recipe Header -->
-      <div class="recipe-header">
-        <input 
-          [(ngModel)]="recipe.name" 
-          (blur)="saveRecipes()"
-          placeholder="Recipe Name"
-          class="recipe-name-input"
-        >
-        <button class="btn-icon-danger" (click)="deleteRecipe(i)" aria-label="Delete recipe">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M3.5 3.5L10.5 10.5M3.5 10.5L10.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Snackbar -->
+  <div class="snackbar-container" *ngIf="snackbarMessage">
+    <div class="snackbar" [class]="'snackbar-' + snackbarType">
+      <div class="snackbar-content">
+        <div class="snackbar-icon">
+          <svg *ngIf="snackbarType === 'success'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
           </svg>
-        </button>
+          <svg *ngIf="snackbarType === 'error'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <svg *ngIf="snackbarType === 'warning'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <svg *ngIf="snackbarType === 'info'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </div>
+        <div class="snackbar-message">{{ snackbarMessage }}</div>
       </div>
+      <button class="snackbar-close" (click)="hideSnackbar()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
 
-      <!-- Recipe Configuration -->
-      <div class="recipe-config">
-        <div class="config-item">
-          <label>Batch Size</label>
-          <div class="config-input-group">
-            <input 
-              type="number" 
-              [(ngModel)]="recipe.batchSize" 
-              (blur)="saveRecipes()"
-              min="1"
-              class="config-input"
-              placeholder="0"
-            >
-            <span class="config-unit">units</span>
-          </div>
-        </div>
-        <div class="config-item">
-          <label>Yield</label>
-          <div class="config-input-group">
-            <input 
-              type="number" 
-              [(ngModel)]="recipe.yieldKg" 
-              (blur)="saveRecipes()"
-              step="0.1"
-              min="0"
-              class="config-input"
-              placeholder="0.0"
-            >
-            <span class="config-unit">kg</span>
-          </div>
-        </div>
-        <div class="config-item">
-          <label>Batch Cost</label>
-          <div class="cost-display">₱{{ calculateRecipeCost(recipe) | number:'1.0-0' }}</div>
-        </div>
-        <div class="config-item">
-          <label>Cost/kg</label>
-          <div class="cost-display">₱{{ calculateCostPerKg(recipe) | number:'1.1-1' }}</div>
-        </div>
-      </div>
+  <!-- Loading & Error States -->
+  <div *ngIf="isLoading" class="loading-state">
+    <div class="loading-spinner"></div>
+    <p>Loading recipes...</p>
+  </div>
 
-      <!-- Ingredients Section -->
-      <div class="ingredients-section">
-        <div class="section-header">
-          <h3>Ingredients</h3>
-          <button class="btn-secondary" (click)="addIngredient(i)">
-            <svg class="btn-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 2V10M2 6H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <div *ngIf="errorMessage && !isLoading" class="error-state">
+    <p>{{ errorMessage }}</p>
+    <button class="btn-secondary" (click)="refresh()">Retry</button>
+  </div>
+
+  <!-- Main Content -->
+  <div *ngIf="!isLoading && !errorMessage">
+    <div class="table-card">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+          <div class="search-container" style="position: relative; flex: 0 1 auto; min-width: 280px;">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            Add Ingredient
-          </button>
+            <input type="text" class="form-input search-input" placeholder="Search recipes, SKUs, or premixes..."
+                   [(ngModel)]="searchQuery" (input)="applySearch()" style="padding-left: 36px;">
+          </div>
+        </div>
+        <div class="item-count-badge">{{ allRecipes.length }} recipes</div>
+      </div>
+
+      <div class="table-container">
+        <table class="materials-table">
+          <thead>
+            <tr>
+              <th style="padding-left: 20px;">Product Name</th>
+              <th class="text-right">STD Yield (kg)</th>
+              <th class="text-right">SKUs</th>
+              <th class="text-right">Premixes</th>
+              <th class="fixed-column">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="recipes.length === 0">
+              <td colspan="5" class="empty-state" style="text-align:center; padding: 60px;">
+                <div style="font-size: 64px; margin-bottom: 1rem;">No Recipes Found</div>
+                <h3 style="font-size: 18px; margin: 0.5rem 0;">No Recipes Found</h3>
+                <p style="color:#666; font-size: 16px;">Try adjusting your search or add a new recipe</p>
+              </td>
+            </tr>
+
+            <tr *ngFor="let recipe of recipes">
+              <td style="padding-left: 20px;">
+                <div class="material-description">
+                  <div class="description-text"><strong>{{ recipe.name }}</strong></div>
+                  <div class="material-id" *ngIf="recipe.id">ID: {{ recipe.id.substring(0,8) }}...</div>
+                </div>
+              </td>
+              <td class="text-right"><span class="category-badge">{{ recipe.std_yield || 0 }} kg</span></td>
+              <td class="text-right">
+                <div class="stock-display">
+                  <span class="stock-value">{{ recipe.skus.length }}</span>
+                  <span class="unit">items</span>
+                </div>
+              </td>
+              <td class="text-right">
+                <div class="stock-display">
+                  <span class="stock-value">{{ recipe.premixes.length }}</span>
+                  <span class="unit">items</span>
+                </div>
+              </td>
+              <td class="fixed-column actions">
+                <div class="action-buttons">
+                  <button class="btn-icon-edit" (click)="viewRecipeDetails(recipe)" title="View Details">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                  <button class="btn-icon-edit" (click)="openEditRecipeModal(recipe)" title="Edit">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </button>
+                  <button class="btn-icon-danger" (click)="deleteRecipe(recipe.id, recipe.name)" title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Details Modal -->
+  <div *ngIf="showDetailsModal && selectedRecipe" class="modal-overlay" (click)="closeDetailsModal()">
+    <div class="modal-container" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title">{{ selectedRecipe.name }}</h2>
+        <button class="modal-close" (click)="closeDetailsModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>STD Yield:</label>
+          <div class="form-input-static">{{ selectedRecipe.std_yield || 0 }} kg</div>
         </div>
 
-        <div class="table-container">
-          <table class="ingredients-table">
+        <div *ngIf="selectedRecipe.skus.length > 0" class="section">
+          <h4>SKUs ({{ selectedRecipe.skus.length }})</h4>
+          <table class="form-table">
             <thead>
               <tr>
-                <th>Material</th>
-                <th>SKU</th>
-                <th class="text-right">Qty/Batch</th>
-                <th class="text-right">Unit Cost</th>
-                <th class="text-right">Cost</th>
-                <th></th>
+                <th>Name</th>
+                <th class="text-right">1B</th>
+                <th class="text-right">½B</th>
+                <th class="text-right">¼B</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let ingredient of recipe.ingredients; let j = index">
-                <td>
-                  <select 
-                    [(ngModel)]="ingredient.sku" 
-                    (change)="onIngredientChange(i, j)"
-                    class="table-select"
-                  >
-                    <option value="">Select Material</option>
-                    <option 
-                      *ngFor="let material of rawMaterials" 
-                      [value]="material.sku"
-                    >
-                      {{ material.description }}
-                    </option>
-                  </select>
-                </td>
-                <td class="sku">{{ ingredient.sku || '–' }}</td>
-                <td class="text-right">
-                  <div class="qty-input-group">
-                    <input 
-                      type="number" 
-                      [(ngModel)]="ingredient.qty" 
-                      (blur)="saveRecipes()"
-                      step="0.001"
-                      min="0"
-                      class="table-input number"
-                      placeholder="0.000"
-                    >
-                    <span class="unit">kg</span>
-                  </div>
-                </td>
-                <td class="text-right">
-                  <span class="cost-value">₱{{ getMaterialCost(ingredient.sku) | number:'1.2-2' }}</span>
-                </td>
-                <td class="text-right">
-                  <span class="cost-value">₱{{ calculateIngredientCost(ingredient) | number:'1.2-2' }}</span>
-                </td>
-                <td class="actions">
-                  <button class="btn-icon-danger" (click)="deleteIngredient(i, j)" aria-label="Delete">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M3 3L9 9M3 9L9 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    </svg>
-                  </button>
-                </td>
+              <tr *ngFor="let s of selectedRecipe.skus">
+                <td>{{ s.name }}</td>
+                <td class="text-right">{{ s.quantity1b || 0 }}</td>
+                <td class="text-right">{{ s.quantityhalfb || 0 }}</td>
+                <td class="text-right">{{ s.quantityquarterb || 0 }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Empty State -->
-        <div *ngIf="recipe.ingredients.length === 0" class="empty-state">
-          <div class="empty-icon">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M16 10V22M10 16H22" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round"/>
-              <rect x="6" y="6" width="20" height="20" rx="2" stroke="#9CA3AF" stroke-width="1.5"/>
-            </svg>
-          </div>
-          <p>No ingredients added</p>
-          <button class="btn-secondary" (click)="addIngredient(i)">
-            Add First Ingredient
-          </button>
+        <div *ngIf="selectedRecipe.premixes.length > 0" class="section">
+          <h4>Premixes ({{ selectedRecipe.premixes.length }})</h4>
+          <table class="form-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="text-right">1B</th>
+                <th class="text-right">½B</th>
+                <th class="text-right">¼B</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let p of selectedRecipe.premixes">
+                <td>{{ p.name }}</td>
+                <td class="text-right">{{ p.quantity1b || 0 }}</td>
+                <td class="text-right">{{ p.quantityhalfb || 0 }}</td>
+                <td class="text-right">{{ p.quantityquarterb || 0 }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
-
-      <!-- Recipe Summary -->
-      <div class="recipe-footer">
-        <div class="summary-grid">
-          <div class="summary-item">
-            <div class="summary-label">Ingredients</div>
-            <div class="summary-value">{{ recipe.ingredients.length }}</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Batch Cost</div>
-            <div class="summary-value">₱{{ calculateRecipeCost(recipe) | number:'1.0-0' }}</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Cost/kg</div>
-            <div class="summary-value">₱{{ calculateCostPerKg(recipe) | number:'1.1-1' }}</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Yield %</div>
-            <div class="summary-value">{{ calculateEfficiency(recipe) }}%</div>
-          </div>
-        </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" (click)="closeDetailsModal()">Close</button>
+        <button class="btn-primary" (click)="openEditRecipeModal(selectedRecipe)">
+          Edit Recipe
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Empty State for No Recipes -->
-  <div *ngIf="recipes.length === 0" class="empty-recipes" @fadeInUp>
-    <div class="empty-content">
-      <div class="empty-icon">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <path d="M16 20H32M16 28H24" stroke="#6B7280" stroke-width="2" stroke-linecap="round"/>
-          <rect x="10" y="10" width="28" height="28" rx="2" stroke="#6B7280" stroke-width="2"/>
-        </svg>
+  <!-- Add/Edit Recipe Modal -->
+  <div *ngIf="showRecipeModal" class="modal-overlay" (click)="closeRecipeModal()">
+    <div class="modal-container" (click)="$event.stopPropagation()" style="max-width: 800px; max-height: 90vh;">
+      <div class="modal-header">
+        <h2 class="modal-title">{{ editingRecipe.id ? 'Edit' : 'Add' }} Recipe</h2>
+        <button class="modal-close" (click)="closeRecipeModal()">×</button>
       </div>
-      <h3>No recipes yet</h3>
-      <p>Create your first recipe to start production planning</p>
-      <button class="btn-primary" (click)="addRecipe()">
-        <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        Create Recipe
-      </button>
+
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Product Name *</label>
+            <input type="text" [(ngModel)]="editingRecipe.name" class="form-input" placeholder="Enter recipe name" required>
+          </div>
+          <div class="form-group">
+            <label>STD Yield (kg) *</label>
+            <input type="number" [(ngModel)]="editingRecipe.stdYield" class="form-input" min="0" step="0.1" required>
+          </div>
+        </div>
+
+        <!-- SKUs -->
+        <div class="section">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4>SKUs ({{ editingRecipe.skus.length }})</h4>
+            <button type="button" class="btn-secondary" (click)="addSku()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add SKU
+            </button>
+          </div>
+
+          <div class="table-container" *ngIf="editingRecipe.skus.length > 0">
+            <table class="form-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="text-right">1B</th>
+                  <th class="text-right">½B</th>
+                  <th class="text-right">¼B</th>
+                  <th style="width: 50px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let s of editingRecipe.skus; let i = index">
+                  <td><input [(ngModel)]="s.name" class="form-input small" placeholder="Enter SKU name"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="s.quantity1b" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="s.quantityhalfb" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="s.quantityquarterb" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td><button class="btn-icon-danger small" (click)="removeSku(i)" title="Remove">×</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p *ngIf="editingRecipe.skus.length === 0" class="empty-state">No SKUs added yet</p>
+        </div>
+
+        <!-- Premixes -->
+        <div class="section">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4>Premixes ({{ editingRecipe.premixes.length }})</h4>
+            <button type="button" class="btn-secondary" (click)="addPremix()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add Premix
+            </button>
+          </div>
+
+          <div class="table-container" *ngIf="editingRecipe.premixes.length > 0">
+            <table class="form-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="text-right">1B</th>
+                  <th class="text-right">½B</th>
+                  <th class="text-right">¼B</th>
+                  <th style="width: 50px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let p of editingRecipe.premixes; let i = index">
+                  <td><input [(ngModel)]="p.name" class="form-input small" placeholder="Enter premix name"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="p.quantity1b" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="p.quantityhalfb" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td class="text-right"><input type="number" [(ngModel)]="p.quantityquarterb" min="0" step="0.001" class="form-input small text-right"></td>
+                  <td><button class="btn-icon-danger small" (click)="removePremix(i)" title="Remove">×</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p *ngIf="editingRecipe.premixes.length === 0" class="empty-state">No premixes added yet</p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" (click)="closeRecipeModal()">Cancel</button>
+        <button type="button" class="btn-primary" (click)="saveRecipe()" [disabled]="!isRecipeValid()">
+          {{ editingRecipe.id ? 'Update' : 'Save' }} Recipe
+        </button>
+      </div>
     </div>
   </div>
 </div>
