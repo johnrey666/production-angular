@@ -840,57 +840,64 @@ export class SupabaseService {
       return null;
     }
   }
+async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
+  try {
+    console.log('Fetching ALL recipes + items in ONE query...');
 
-  async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
-    try {
-      console.log('Getting all recipes with details...');
-      
-      // Get all recipes
-      const recipes = await this.getRecipes();
-      console.log(`Found ${recipes.length} recipes`);
-      
-      // Get details for each recipe
-      const recipesWithDetails = await Promise.all(
-        recipes.map(async (recipe) => {
-          if (!recipe.id) {
-            console.warn('Recipe without ID:', recipe);
-            return {
-              id: undefined,
-              name: recipe.name,
-              std_yield: recipe.std_yield,
-              batch_size: recipe.batch_size,
-              yield_kg: recipe.yield_kg,
-              created_at: recipe.created_at,
-              skus: [],
-              premixes: []
-            };
-          }
-          
-          const items = await this.getRecipeItems(recipe.id);
-          console.log(`Recipe ${recipe.id} - ${recipe.name} has ${items.length} items`);
-          
-          return {
-            id: recipe.id,
-            name: recipe.name,
-            std_yield: recipe.std_yield,
-            batch_size: recipe.batch_size,
-            yield_kg: recipe.yield_kg,
-            created_at: recipe.created_at,
-            skus: items.filter(item => item.type === 'sku'),
-            premixes: items.filter(item => item.type === 'premix')
-          };
-        })
-      );
-      
-      console.log(`Returning ${recipesWithDetails.length} recipes with details`);
-      return recipesWithDetails;
-      
-    } catch (error) {
-      console.error('Error in getAllRecipesWithDetails:', error);
+    const { data, error } = await this.supabase
+      .from('recipes')
+      .select(`
+        id,
+        name,
+        std_yield,
+        batch_size,
+        yield_kg,
+        created_at,
+        recipe_items (
+          id,
+          name,
+          type,
+          quantity1b,
+          quantityhalfb,
+          quantityquarterb
+        )
+      `)
+      .order('name');
+
+    if (error) {
+      console.error('Supabase error:', error);
       return [];
     }
-  }
 
+    if (!data) {
+      console.log('No recipes found');
+      return [];
+    }
+
+    console.log(`Fetched ${data.length} recipes with nested items`);
+
+    const result: RecipeWithDetails[] = data.map((row: any) => {
+      const items = row.recipe_items || [];
+      return {
+        id: row.id,
+        name: row.name,
+        std_yield: row.std_yield,
+        batch_size: row.batch_size || 1,
+        yield_kg: row.yield_kg || 0,
+        created_at: row.created_at,
+        skus: items.filter((i: any) => i.type === 'sku'),
+        premixes: items.filter((i: any) => i.type === 'premix')
+      };
+    });
+
+    console.log(`Returning ${result.length} fully loaded recipes`);
+    return result;
+
+  } catch (err) {
+    console.error('Fatal error in getAllRecipesWithDetails:', err);
+    return [];
+  }
+}
   async saveRecipeWithItems(recipe: RecipeWithDetails): Promise<RecipeWithDetails | null> {
     try {
       console.log('=== STARTING saveRecipeWithItems ===');

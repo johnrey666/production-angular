@@ -5,7 +5,7 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden; /* Prevent horizontal scroll */
+  overflow-x: hidden;
 }
 
 /* ===== SIDEBAR ===== */
@@ -16,10 +16,15 @@
   display: flex;
   flex-direction: column;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
+  position: fixed; /* Fixed positioning */
+  top: 0;
+  left: 0;
+  bottom: 0;
   z-index: 10;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  flex-shrink: 0; /* Prevent sidebar from shrinking */
+  height: 100vh; /* Full viewport height */
+  overflow-y: auto; /* Allow sidebar to scroll if content overflows */
+  overscroll-behavior: contain; /* Prevent scroll chaining */
 }
 
 .sidebar-collapsed {
@@ -32,6 +37,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky; /* Sticky within sidebar */
+  top: 0;
+  background: #ffffff;
+  z-index: 2;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .company-brand {
@@ -119,6 +129,8 @@
   flex-direction: column;
   gap: 0.125rem;
   margin-top: 0.5rem;
+  overflow-y: auto; /* Allow navigation to scroll */
+  max-height: calc(100vh - 200px); /* Limit height for scrollability */
 }
 
 .nav-item {
@@ -132,6 +144,7 @@
   transition: all 0.15s ease;
   position: relative;
   overflow: hidden;
+  white-space: nowrap; /* Prevent text wrapping */
 }
 
 .nav-item:hover {
@@ -189,6 +202,10 @@
   padding: 1rem;
   border-top: 1px solid #f1f5f9;
   margin-top: auto;
+  position: sticky; /* Sticky within sidebar */
+  bottom: 0;
+  background: #ffffff;
+  z-index: 2;
 }
 
 .status-indicator {
@@ -228,11 +245,15 @@
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 0;
   width: calc(100% - 240px); /* Adjust width based on sidebar */
-  overflow-x: hidden; /* Prevent horizontal overflow */
+  margin-left: 240px; /* Push content right of fixed sidebar */
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow main content to scroll */
 }
 
 .content-expanded {
-  width: calc(100% - 64px); /* Adjust width for collapsed sidebar */
+  width: calc(100% - 64px);
+  margin-left: 64px; /* Adjust for collapsed sidebar */
 }
 
 /* Page transitions */
@@ -258,20 +279,92 @@ router-outlet + * {
     height: 100vh;
     z-index: 1000;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform: translateX(-100%); /* Hidden by default on mobile */
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .sidebar:not(.sidebar-collapsed) {
+    transform: translateX(0); /* Show when not collapsed */
   }
   
   .sidebar-collapsed {
+    /* On mobile, collapsed means hidden */
     transform: translateX(-100%);
   }
   
   .main-content {
     width: 100%;
+    margin-left: 0;
     padding: 1.5rem;
-    margin-left: 0 !important; /* Override any margin */
   }
   
   .content-expanded {
     width: 100%;
-    margin-left: 0 !important; /* Override any margin */
+    margin-left: 0;
   }
+  
+  /* Mobile menu toggle button overlay */
+  .mobile-menu-toggle {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 999;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Custom scrollbar for sidebar */
+.sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom scrollbar for main content */
+.main-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.main-content::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* For Firefox */
+.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.main-content {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
 }
