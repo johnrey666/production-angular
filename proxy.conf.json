@@ -1,0 +1,8 @@
+{
+  "/supabase": {
+    "target": "https://fgmkzhyuuljeyoiulwni.supabase.co",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": { "^/supabase": "" }
+  }
+}
