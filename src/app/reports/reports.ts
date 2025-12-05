@@ -17,10 +17,10 @@ interface ReportItem {
   undelivered: number;
   fillRate: number;
   remarks: string;
-  weekStartDate: string;
-  weekEndDate: string;
-  weekNumber: number;
-  year: number;
+  weekStartDate: string; // Added: Start date of the week (YYYY-MM-DD)
+  weekEndDate: string;   // Added: End date of the week (YYYY-MM-DD)
+  weekNumber: number;    // Added: Week number (1-52/53)
+  year: number;          // Added: Year
   created_at?: string;
 }
 
@@ -76,9 +76,9 @@ interface SkuCatalogItem {
   id?: string;
   sku: string;
   description: string;
-  um: string;
-  price: number;
-  type: string;
+  um?: string;
+  price?: number;
+  type?: string;
 }
 
 @Component({
@@ -89,6 +89,7 @@ interface SkuCatalogItem {
   styleUrls: ['./reports.css']
 })
 export class ReportsComponent implements OnInit {
+  // Store management
   selectedStore: string = '';
   newStoreName: string = '';
   predefinedStores: string[] = [
@@ -107,15 +108,18 @@ export class ReportsComponent implements OnInit {
   customStores: string[] = [];
   allStores: string[] = ['All', ...this.predefinedStores];
   
+  // Week management
   selectedWeek: WeekOption | null = null;
   availableWeeks: WeekOption[] = [];
   showWeekSelector = false;
   
+  // Date range for current week (if no week selected)
   currentWeekStartDate: string;
   currentWeekEndDate: string;
   currentWeekNumber: number;
   currentYear: number;
   
+  // Product types
   productTypes: string[] = [
     'Finished Goods',
     'Raw Materials',
@@ -124,33 +128,39 @@ export class ReportsComponent implements OnInit {
     'Others'
   ];
   
+  // Data management
   allReportData: Map<string, ReportItem[]> = new Map();
   displayedData: ReportItem[] = [];
   aggregatedData: AggregatedItem[] = [];
   displayedAggregatedData: AggregatedItem[] = [];
   showAggregatedView = false;
   
-  skuCatalog: SkuCatalogItem[] = [];
-  isLoadingCatalog = false;
-  
+  // UI State
   isLoading = false;
-  isSavingData = false;
-  isInitializing = false;
-  loadingProgress = '';
-  loadingMessage = '';
   errorMessage = '';
   searchQuery = '';
+  loadingMessage = '';
+  loadingProgress = '';
+  isInitializing = false;
   
+  // Modal State
   showModal = false;
   isEditing = false;
   currentProduct: ReportItem = this.createEmptyProduct();
+
+  // SKU catalog + flags
+  skuCatalog: SkuCatalogItem[] = [];
+  isLoadingCatalog = false;
+  isSavingData = false;
   
+  // Pagination
   currentPage = 1;
   itemsPerPage = 10;
   totalPages = 1;
   startIndex = 0;
   endIndex = 0;
   
+  // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
@@ -159,12 +169,14 @@ export class ReportsComponent implements OnInit {
     private cdr: ChangeDetectorRef,
     private supabase: SupabaseService
   ) {
+    // Initialize current week
     const currentWeek = this.getCurrentWeek();
     this.currentWeekStartDate = currentWeek.weekStartDate;
     this.currentWeekEndDate = currentWeek.weekEndDate;
     this.currentWeekNumber = currentWeek.weekNumber;
     this.currentYear = currentWeek.year;
     
+    // Set selected week to current week by default
     this.selectedWeek = {
       label: `Week ${currentWeek.weekNumber}, ${currentWeek.year} (${this.formatDate(currentWeek.weekStartDate)} - ${this.formatDate(currentWeek.weekEndDate)})`,
       ...currentWeek
@@ -174,77 +186,70 @@ export class ReportsComponent implements OnInit {
   ngOnInit() {
     this.testDatabaseConnection().then(success => {
       if (success) {
-        this.loadSkuCatalog().then(() => {
-          this.loadReportsFromDatabase();
-        });
+        this.loadSkuCatalog().then(() => this.loadReportsFromDatabase());
       }
     });
   }
 
-  // SKU Catalog Methods
+  // SKU catalog loader
   async loadSkuCatalog() {
     this.isLoadingCatalog = true;
     try {
-      console.log('Loading SKU catalog...');
       const { data, error } = await this.supabase['supabase']
         .from('sku_catalog')
         .select('*')
         .order('sku');
-      
+
       if (error) {
         console.error('Error loading SKU catalog:', error);
-        
-        // If table doesn't exist, create it with sample data
+        // If table doesn't exist, create it (best-effort) and seed defaults
         if (error.code === '42P01') {
-          this.showSnackbar('SKU catalog table not found. Creating it...', 'info');
+          this.showSnackbar('SKU catalog table not found. Creating it (local seed)...', 'info');
           await this.createSkuCatalogTable();
           await this.insertDefaultSkus();
-          await this.loadSkuCatalog(); // Try loading again
+          this.skuCatalog = this.skuCatalog || [];
+        } else {
+          this.showSnackbar('Error loading SKU catalog: ' + (error.message || ''), 'error');
         }
         return;
       }
-      
-      this.skuCatalog = data || [];
-      console.log(`Loaded ${this.skuCatalog.length} SKUs from catalog`);
-      
-    } catch (error) {
-      console.error('Error loading SKU catalog:', error);
+
+      this.skuCatalog = (data || []) as SkuCatalogItem[];
+    } catch (err) {
+      console.error('Unexpected error loading SKU catalog:', err);
     } finally {
       this.isLoadingCatalog = false;
     }
   }
 
   async createSkuCatalogTable() {
-    try {
-      // This is a simplified version - in real app, you'd run SQL to create table
-      console.log('Creating SKU catalog table...');
-      this.showSnackbar('Creating SKU catalog table...', 'info');
-    } catch (error) {
-      console.error('Error creating SKU catalog table:', error);
-    }
+    // Best-effort informational stub. Creating DB objects programmatically
+    // is environment-specific; we seed local catalog instead.
+    console.log('createSkuCatalogTable: called (stub)');
+    this.showSnackbar('Created SKU catalog (local seed)', 'info');
   }
 
   async insertDefaultSkus() {
-    try {
-      // This would insert the SKUs you provided
-      // For now, we'll create a local array
-      console.log('Inserting default SKUs...');
-    } catch (error) {
-      console.error('Error inserting default SKUs:', error);
-    }
+    // Seed a small set of SKUs locally so UI is usable even without DB
+    this.skuCatalog = [
+      { sku: '4362771', description: 'AJI Umami Seasoning 2.5kg×8', um: 'kg', price: 459.99, type: 'Seasoning' },
+      { sku: '3498918', description: 'Pork Belly Skinless', um: 'kg', price: 310, type: 'Pork' },
+      { sku: '4236408', description: 'Cooking Oil 17kg', um: 'L', price: 1510, type: 'Oil' }
+    ];
+    this.showSnackbar('Default SKU catalog seeded locally', 'info');
   }
 
   onSkuSelect(sku: string) {
-    const catalogItem = this.skuCatalog.find(item => item.sku === sku);
-    if (catalogItem) {
-      this.currentProduct.sku = catalogItem.sku;
-      this.currentProduct.description = catalogItem.description;
-      this.currentProduct.um = catalogItem.um;
-      this.currentProduct.price = catalogItem.price;
-      this.currentProduct.type = catalogItem.type;
-    }
+    const item = this.skuCatalog.find(i => i.sku === sku);
+    if (!item) return;
+    this.currentProduct.sku = item.sku;
+    this.currentProduct.description = item.description;
+    if (item.um) this.currentProduct.um = item.um;
+    if (item.price) this.currentProduct.price = item.price;
+    if (item.type) this.currentProduct.type = item.type;
   }
 
+  // Initialize week with all SKUs (minimal implementation)
   async initializeWeekWithAllSkus() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -261,44 +266,26 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!confirm(`Initialize Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} for ${this.selectedStore} with all SKUs?\nThis will create entries for all ${this.skuCatalog.length} SKUs with zero values.`)) {
+    if (!confirm(`Initialize Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} for ${this.selectedStore} with all SKUs?`)) {
       return;
     }
 
     this.isInitializing = true;
-    this.isLoading = true;
     this.loadingMessage = 'Initializing week with all SKUs...';
-    this.loadingProgress = 'Preparing SKU data...';
-    this.showSnackbar('Initializing week with all SKUs...', 'info');
-    
+    this.loadingProgress = '';
     try {
-      const existingData = this.getCurrentStoreData();
-      const existingSkus = new Set(existingData.map(item => item.sku));
-      
-      let createdCount = 0;
-      let skippedCount = 0;
-      let errors = 0;
-      
-      const totalSkus = this.skuCatalog.length;
-      
-      // Create entries for all SKUs not already present
-      for (let i = 0; i < this.skuCatalog.length; i++) {
-        const catalogItem = this.skuCatalog[i];
-        
-        this.loadingProgress = `Processing SKU ${i + 1} of ${totalSkus}: ${catalogItem.sku}`;
-        
-        if (existingSkus.has(catalogItem.sku)) {
-          skippedCount++;
-          continue;
-        }
-        
+      // Minimal behavior: create local entries only (no heavy DB ops here)
+      const storeData = this.allReportData.get(this.selectedStore) || [];
+      for (const skuItem of this.skuCatalog) {
+        const exists = storeData.some(p => p.sku === skuItem.sku && p.weekStartDate === this.selectedWeek!.weekStartDate && p.weekEndDate === this.selectedWeek!.weekEndDate);
+        if (exists) continue;
         const newItem: ReportItem = {
           store: this.selectedStore,
-          sku: catalogItem.sku,
-          description: catalogItem.description,
-          type: catalogItem.type,
-          um: catalogItem.um,
-          price: catalogItem.price,
+          sku: skuItem.sku,
+          description: skuItem.description,
+          type: skuItem.type || 'Finished Goods',
+          um: skuItem.um || 'pack',
+          price: skuItem.price || 0,
           storeOrder: 0,
           delivered: 0,
           undelivered: 0,
@@ -309,57 +296,56 @@ export class ReportsComponent implements OnInit {
           weekNumber: this.selectedWeek.weekNumber,
           year: this.selectedWeek.year
         };
-        
-        try {
-          const savedItem = await this.saveToDatabase(newItem);
-          if (savedItem) {
-            createdCount++;
-            
-            // Add to local data
-            const storeData = this.allReportData.get(this.selectedStore) || [];
-            storeData.push(savedItem);
-            this.allReportData.set(this.selectedStore, storeData);
-          }
-        } catch (error) {
-          errors++;
-          console.error(`Error saving SKU ${catalogItem.sku}:`, error);
-        }
-        
-        // Update progress every 10 items
-        if (i % 10 === 0 || i === totalSkus - 1) {
-          this.cdr.detectChanges();
-        }
+        storeData.push(newItem);
       }
-      
-      this.showSnackbar(`Week initialized: ${createdCount} new SKUs added, ${skippedCount} already existed, ${errors} errors`, 
-        errors > 0 ? 'warning' : 'success');
-      this.refreshCurrentView();
-      
-    } catch (error) {
-      console.error('Error initializing week:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to initialize week: ' + errorMessage, 'error');
+      this.allReportData.set(this.selectedStore, storeData);
+      this.showSnackbar('Week initialized locally with SKUs', 'success');
+      this.loadStoreData();
+    } catch (err) {
+      console.error('Error initializing week:', err);
+      this.showSnackbar('Failed to initialize week', 'error');
     } finally {
       this.isInitializing = false;
-      this.isLoading = false;
-      this.loadingProgress = '';
       this.loadingMessage = '';
+      this.loadingProgress = '';
     }
   }
 
-  // Existing methods (with fixes for week switching)
+  async fixSchemaCache(): Promise<void> {
+    try {
+      this.showSnackbar('Attempting to fix schema cache...', 'info');
+      const { error } = await this.supabase['supabase']
+        .from('production_reports')
+        .select('id')
+        .limit(1);
+
+      if (error && error.code === 'PGRST204') {
+        this.showSnackbar('Schema cache still needs refresh. Run "NOTIFY pgrst, \'reload schema\'" in Supabase SQL Editor.', 'warning');
+      } else {
+        this.showSnackbar('Schema cache appears OK', 'success');
+      }
+    } catch (err) {
+      console.error('Error fixing schema cache:', err);
+      this.showSnackbar('Failed to check schema cache', 'error');
+    }
+  }
+
+  // Helper method to get current week info
   getCurrentWeek(): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
     const today = new Date();
     const year = today.getFullYear();
     
+    // Get start of week (Monday)
     const startOfWeek = new Date(today);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
     startOfWeek.setDate(diff);
     
+    // Get end of week (Sunday)
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
+    // Get week number (ISO week number)
     const firstDayOfYear = new Date(year, 0, 1);
     const pastDaysOfYear = (today.getTime() - firstDayOfYear.getTime()) / 86400000;
     const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
@@ -372,6 +358,7 @@ export class ReportsComponent implements OnInit {
     };
   }
 
+  // Format date for display
   formatDate(dateString: string): string {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -382,11 +369,13 @@ export class ReportsComponent implements OnInit {
     });
   }
 
+  // Generate weeks for selector (last 12 weeks + future 4 weeks)
   generateWeekOptions() {
     const weeks: WeekOption[] = [];
     const today = new Date();
     const currentWeek = this.getCurrentWeek();
     
+    // Add current week
     weeks.push({
       label: `Current Week: ${this.formatDate(currentWeek.weekStartDate)} - ${this.formatDate(currentWeek.weekEndDate)}`,
       weekStartDate: currentWeek.weekStartDate,
@@ -395,6 +384,7 @@ export class ReportsComponent implements OnInit {
       year: currentWeek.year
     });
     
+    // Add past 12 weeks
     for (let i = 1; i <= 12; i++) {
       const date = new Date(currentWeek.weekStartDate);
       date.setDate(date.getDate() - (i * 7));
@@ -409,6 +399,7 @@ export class ReportsComponent implements OnInit {
       });
     }
     
+    // Add future 4 weeks
     for (let i = 1; i <= 4; i++) {
       const date = new Date(currentWeek.weekStartDate);
       date.setDate(date.getDate() + (i * 7));
@@ -426,17 +417,21 @@ export class ReportsComponent implements OnInit {
     this.availableWeeks = weeks;
   }
 
+  // Get week info for a specific date
   getWeekForDate(date: Date): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
     const year = date.getFullYear();
     
+    // Get start of week (Monday)
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
     startOfWeek.setDate(diff);
     
+    // Get end of week (Sunday)
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
+    // Get week number
     const firstDayOfYear = new Date(year, 0, 1);
     const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
     const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
@@ -451,13 +446,9 @@ export class ReportsComponent implements OnInit {
 
   async loadReportsFromDatabase() {
     this.isLoading = true;
-    this.loadingMessage = 'Loading production reports...';
-    this.loadingProgress = 'Connecting to database...';
-    
     try {
       console.log('Loading production reports from database...');
       
-      this.loadingProgress = 'Fetching data...';
       const { data, error } = await this.supabase['supabase']
         .from('production_reports')
         .select('*')
@@ -466,9 +457,10 @@ export class ReportsComponent implements OnInit {
       if (error) {
         console.error('Error fetching data:', error);
         
+        // Handle specific error codes
         if (error.code === 'PGRST204') {
           this.showSnackbar(
-            'Database schema cache issue detected. Using workaround for now.',
+            'Database schema cache needs refresh. Please wait 30 seconds and try again.',
             'warning'
           );
         } else if (error.code === '42P01') {
@@ -480,7 +472,7 @@ export class ReportsComponent implements OnInit {
       }
       
       if (data && data.length > 0) {
-        this.loadingProgress = 'Processing store data...';
+        // Clear existing data
         this.allReportData.clear();
         this.aggregatedData = [];
         this.displayedAggregatedData = [];
@@ -494,6 +486,7 @@ export class ReportsComponent implements OnInit {
           }
           this.allReportData.get(store)!.push(localItem);
           
+          // Add store to custom stores if it's not predefined
           if (!this.predefinedStores.includes(store) && !this.customStores.includes(store)) {
             this.customStores.push(store);
             if (!this.allStores.includes(store)) {
@@ -502,13 +495,16 @@ export class ReportsComponent implements OnInit {
           }
         });
         
-        this.loadingProgress = 'Updating store list...';
+        // Sort stores alphabetically (except 'All')
         const storesWithoutAll = this.allStores.filter(s => s !== 'All');
         storesWithoutAll.sort();
         this.allStores = ['All', ...storesWithoutAll];
         
+        // Generate week options based on available data
         this.generateWeekOptions();
-        this.refreshCurrentView();
+        
+        // Filter data for selected week
+        this.filterDataByWeek();
         
         this.showSnackbar(`Loaded ${data.length} production items across ${this.allReportData.size} stores`, 'success');
         
@@ -519,64 +515,52 @@ export class ReportsComponent implements OnInit {
       
     } catch (error: any) {
       console.error('Error loading reports:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to load production data: ' + errorMessage, 'error');
+      this.showSnackbar('Failed to load production data: ' + error.message, 'error');
     } finally {
       this.isLoading = false;
-      this.loadingProgress = '';
-      this.loadingMessage = '';
       this.cdr.detectChanges();
     }
   }
 
+  // Filter data by selected week
   filterDataByWeek() {
     if (!this.selectedWeek) return;
-    this.refreshCurrentView();
-  }
-
-  refreshCurrentView() {
-    this.isLoading = true;
-    this.loadingMessage = 'Refreshing view...';
     
-    // Reset to page 1 when changing views
-    this.currentPage = 1;
+    // Filter allReportData by week
+    const filteredData = new Map<string, ReportItem[]>();
     
+    this.allReportData.forEach((storeItems, storeName) => {
+      const weekItems = storeItems.filter(item => 
+        item.weekStartDate === this.selectedWeek!.weekStartDate &&
+        item.weekEndDate === this.selectedWeek!.weekEndDate
+      );
+      
+      if (weekItems.length > 0) {
+        filteredData.set(storeName, weekItems);
+      }
+    });
+    
+    this.allReportData = filteredData;
+    
+    // Refresh view based on current selection
     if (this.selectedStore === 'All') {
       this.loadAggregatedData();
     } else if (this.selectedStore && this.selectedStore !== 'custom') {
       this.loadStoreData();
-    } else {
-      this.isLoading = false;
-      this.loadingMessage = '';
     }
-    this.cdr.detectChanges();
   }
 
   onWeekChange(week: WeekOption) {
     this.selectedWeek = week;
-    this.refreshCurrentView();
+    this.filterDataByWeek();
     this.showWeekSelector = false;
   }
 
   onStoreChange() {
-    // Show loading only if we have data to load
-    if ((this.selectedStore === 'All' && this.aggregatedData.length > 0) || 
-        (this.selectedStore && this.selectedStore !== 'custom' && this.selectedStore !== 'All' && this.getCurrentStoreData().length > 0)) {
-      this.isLoading = true;
-      this.loadingMessage = 'Loading store data...';
-    }
-    
-    // Reset to page 1 when changing stores
-    this.currentPage = 1;
-    
     if (this.selectedStore === 'custom') {
       this.newStoreName = '';
       this.showAggregatedView = false;
       this.displayedData = [];
-      this.totalPages = 1;
-      this.startIndex = 0;
-      this.endIndex = 0;
-      this.isLoading = false;
     } else if (this.selectedStore === 'All') {
       this.loadAggregatedData();
     } else if (this.selectedStore && this.selectedStore !== 'custom') {
@@ -585,53 +569,31 @@ export class ReportsComponent implements OnInit {
     } else {
       this.showAggregatedView = false;
       this.displayedData = [];
-      this.totalPages = 1;
-      this.startIndex = 0;
-      this.endIndex = 0;
-      this.isLoading = false;
     }
-    this.cdr.detectChanges();
+    this.currentPage = 1;
+    this.applyFiltersAndSearch();
   }
 
   loadStoreData() {
-    const allStoreData = this.allReportData.get(this.selectedStore) || [];
-    
-    const storeData = allStoreData.filter(item => 
-      this.selectedWeek && 
-      item.weekStartDate === this.selectedWeek.weekStartDate &&
-      item.weekEndDate === this.selectedWeek.weekEndDate
-    );
-    
+    const storeData = this.getCurrentStoreData();
     this.displayedData = [...storeData];
     this.applyFiltersAndSearch();
-    this.isLoading = false;
-    this.loadingMessage = '';
   }
 
   loadAggregatedData() {
     this.showAggregatedView = true;
     this.calculateAggregatedData();
     this.applyAggregatedFilters();
-    this.isLoading = false;
-    this.loadingMessage = '';
   }
 
   calculateAggregatedData() {
     const skuMap = new Map<string, AggregatedItem>();
     
-    if (!this.selectedWeek) {
-      this.aggregatedData = [];
-      return;
-    }
-    
-    this.allReportData.forEach((allStoreItems, storeName) => {
-      const storeItems = allStoreItems.filter(item => 
-        item.weekStartDate === this.selectedWeek!.weekStartDate &&
-        item.weekEndDate === this.selectedWeek!.weekEndDate
-      );
-      
+    // Collect all data from all stores for the selected week
+    this.allReportData.forEach((storeItems, storeName) => {
       storeItems.forEach(item => {
         if (!skuMap.has(item.sku)) {
+          // Create new aggregated item
           skuMap.set(item.sku, {
             sku: item.sku,
             description: item.description,
@@ -658,16 +620,19 @@ export class ReportsComponent implements OnInit {
         aggregatedItem.totalUndelivered += item.undelivered;
         aggregatedItem.storeCount++;
         
+        // Add store to list if not already there
         if (!aggregatedItem.stores.includes(storeName)) {
           aggregatedItem.stores.push(storeName);
         }
         
+        // Update remarks based on the most recent store's remarks
         if (item.remarks) {
           aggregatedItem.remarks = item.remarks;
         }
       });
     });
     
+    // Calculate fill rate for each aggregated item
     skuMap.forEach(item => {
       if (item.totalStoreOrder > 0) {
         item.fillRate = Math.round((item.totalDelivered / item.totalStoreOrder) * 100);
@@ -675,6 +640,7 @@ export class ReportsComponent implements OnInit {
         item.fillRate = 0;
       }
       
+      // Set remarks based on aggregated fill rate
       if (item.fillRate >= 95) item.remarks = 'Excellent';
       else if (item.fillRate >= 85) item.remarks = 'Good';
       else if (item.fillRate >= 70) item.remarks = 'Fair';
@@ -682,6 +648,7 @@ export class ReportsComponent implements OnInit {
       else item.remarks = '';
     });
     
+    // Convert map to array and sort
     this.aggregatedData = Array.from(skuMap.values())
       .sort((a, b) => a.sku.localeCompare(b.sku));
   }
@@ -690,14 +657,7 @@ export class ReportsComponent implements OnInit {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       return [];
     }
-    
-    const allStoreData = this.allReportData.get(this.selectedStore) || [];
-    
-    return allStoreData.filter(item => 
-      this.selectedWeek &&
-      item.weekStartDate === this.selectedWeek.weekStartDate &&
-      item.weekEndDate === this.selectedWeek.weekEndDate
-    );
+    return this.allReportData.get(this.selectedStore) || [];
   }
 
   addCustomStore() {
@@ -718,6 +678,7 @@ export class ReportsComponent implements OnInit {
     this.selectedStore = storeName;
     this.newStoreName = '';
     
+    // Initialize empty data for new store
     this.allReportData.set(storeName, []);
     
     this.showSnackbar(`Store "${storeName}" added successfully`, 'success');
@@ -758,16 +719,14 @@ export class ReportsComponent implements OnInit {
       delivered: localItem.delivered,
       undelivered: localItem.undelivered,
       fill_rate: localItem.fillRate,
-      remarks: localItem.remarks
+      remarks: localItem.remarks,
+      week_start_date: localItem.weekStartDate,
+      week_end_date: localItem.weekEndDate,
+      week_number: localItem.weekNumber,
+      year: localItem.year
     };
     
-    if (!this.hasSchemaCacheError) {
-      dbItem.week_start_date = localItem.weekStartDate;
-      dbItem.week_end_date = localItem.weekEndDate;
-      dbItem.week_number = localItem.weekNumber;
-      dbItem.year = localItem.year;
-    }
-    
+    // Only include id if it exists (for updates)
     if (localItem.id) {
       dbItem.id = localItem.id;
     }
@@ -786,13 +745,22 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  hasSchemaCacheError = false;
-
   async saveToDatabase(item: ReportItem): Promise<ReportItem | null> {
     try {
-      let dbItem = this.toDatabaseFormat(item);
+      const dbItem = this.toDatabaseFormat(item);
+      
+      console.log('DEBUG: Attempting to save product:', {
+        store: dbItem.store,
+        sku: dbItem.sku,
+        weekStartDate: dbItem.week_start_date,
+        weekEndDate: dbItem.week_end_date
+      });
+      
+      let result;
       
       if (item.id) {
+        // Update existing
+        console.log('DEBUG: Updating existing product with ID:', item.id);
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .update(dbItem)
@@ -800,119 +768,111 @@ export class ReportsComponent implements OnInit {
           .select();
         
         if (error) {
-          console.error('Update error:', error);
+          console.error('Update error details:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
           throw error;
         }
-        
-        if (data && data.length > 0) {
-          return this.fromDatabaseFormat(data[0]);
-        }
+        result = data;
       } else {
+        // Insert new
+        console.log('DEBUG: Inserting new product with week columns');
+        
+        // First try direct insert with SELECT
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .insert([dbItem])
           .select();
         
         if (error) {
-          console.error('Insert error (with all columns):', error);
+          console.error('Insert error (with select):', {
+            code: error.code,
+            message: error.message,
+            details: error.details
+          });
           
+          // If it's a schema cache error (PGRST204), retry without SELECT
           if (error.code === 'PGRST204') {
-            console.log('Schema cache error detected. Trying without week columns...');
-            this.hasSchemaCacheError = true;
+            console.log('DEBUG: Schema cache error detected, retrying without SELECT...');
             
-            const dbItemWithoutWeek = {
-              store: item.store,
-              sku: item.sku,
-              description: item.description,
-              type: item.type,
-              um: item.um,
-              price: item.price,
-              store_order: item.storeOrder,
-              delivered: item.delivered,
-              undelivered: item.undelivered,
-              fill_rate: item.fillRate,
-              remarks: item.remarks
-            };
-            
-            const { data: dataWithoutWeek, error: errorWithoutWeek } = await this.supabase['supabase']
+            // Insert without expecting data back
+            const { error: insertError } = await this.supabase['supabase']
               .from('production_reports')
-              .insert([dbItemWithoutWeek])
-              .select();
+              .insert([dbItem]);
             
-            if (errorWithoutWeek) {
-              console.error('Insert error (without week columns):', errorWithoutWeek);
-              throw errorWithoutWeek;
+            if (insertError) {
+              console.error('Insert error (without select):', insertError);
+              throw insertError;
             }
             
-            if (dataWithoutWeek && dataWithoutWeek.length > 0) {
-              const savedItem = this.fromDatabaseFormat(dataWithoutWeek[0]);
-              savedItem.weekStartDate = item.weekStartDate;
-              savedItem.weekEndDate = item.weekEndDate;
-              savedItem.weekNumber = item.weekNumber;
-              savedItem.year = item.year;
-              
-              await this.updateWithWeekColumns(savedItem);
-              
-              return savedItem;
+            // Then fetch the inserted record by unique combination
+            const { data: fetchedData, error: fetchError } = await this.supabase['supabase']
+              .from('production_reports')
+              .select()
+              .eq('store', dbItem.store)
+              .eq('sku', dbItem.sku)
+              .eq('week_start_date', dbItem.week_start_date)
+              .eq('week_end_date', dbItem.week_end_date)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            if (fetchError) {
+              console.error('Fetch error after insert:', fetchError);
+              throw fetchError;
             }
+            
+            result = fetchedData;
           } else {
             throw error;
           }
-        } else if (data && data.length > 0) {
-          return this.fromDatabaseFormat(data[0]);
+        } else {
+          result = data;
         }
       }
       
+      if (result && result.length > 0) {
+        console.log('DEBUG: Save successful, returned:', result[0]);
+        return this.fromDatabaseFormat(result[0]);
+      }
+      
+      console.warn('DEBUG: No data returned from save operation');
       return null;
+      
     } catch (error: any) {
       console.error('Error saving to database:', error);
       
+      // Show specific error messages
       if (error.code === 'PGRST204') {
         this.showSnackbar(
-          'Database schema cache issue. Your data is saved without week info. Please refresh Supabase schema cache.',
+          'Database schema cache issue. Please refresh page in 30 seconds.',
           'warning'
         );
-      } else if (error.code === '23505') {
+      } else if (error.code === '23505') { // Unique violation
         this.showSnackbar(
           `Product "${item.sku}" already exists for this store and week.`,
           'error'
         );
+      } else if (error.code === '23502') { // Not null violation
+        this.showSnackbar(
+          'Database error: Required fields missing.',
+          'error'
+        );
+      } else if (error.code === '42P01') { // Table doesn't exist
+        this.showSnackbar(
+          'Production reports table not found. Please create it in Supabase.',
+          'error'
+        );
       } else {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
-        this.showSnackbar(`Database error: ${errorMessage}`, 'error');
+        this.showSnackbar(
+          `Database error: ${error.message || 'Unknown error'}`,
+          'error'
+        );
       }
       
       throw error;
-    }
-  }
-
-  private async updateWithWeekColumns(item: ReportItem): Promise<void> {
-    if (!item.id) return;
-    
-    try {
-      const updateData = {
-        week_start_date: item.weekStartDate,
-        week_end_date: item.weekEndDate,
-        week_number: item.weekNumber,
-        year: item.year
-      };
-      
-      const { error } = await this.supabase['supabase']
-        .from('production_reports')
-        .update(updateData)
-        .eq('id', item.id);
-      
-      if (error && error.code === 'PGRST204') {
-        console.warn('Cannot update week columns due to schema cache. Data will work without week info.');
-        this.hasSchemaCacheError = true;
-      } else if (error) {
-        console.error('Error updating week columns:', error);
-      } else {
-        console.log('Week columns updated successfully');
-        this.hasSchemaCacheError = false;
-      }
-    } catch (error) {
-      console.error('Error in updateWithWeekColumns:', error);
     }
   }
 
@@ -925,7 +885,7 @@ export class ReportsComponent implements OnInit {
       
       if (error) throw error;
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting from database:', error);
       throw error;
     }
@@ -938,6 +898,7 @@ export class ReportsComponent implements OnInit {
         .delete()
         .eq('store', storeName);
       
+      // If week dates are provided, delete only for that week
       if (weekStartDate && weekEndDate) {
         query = query
           .eq('week_start_date', weekStartDate)
@@ -948,7 +909,7 @@ export class ReportsComponent implements OnInit {
       
       if (error) throw error;
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error clearing store data:', error);
       throw error;
     }
@@ -970,8 +931,6 @@ export class ReportsComponent implements OnInit {
         );
       }
       
-      // Reset to page 1 when filtering
-      this.currentPage = 1;
       this.updatePagination(filtered);
     }
   }
@@ -989,28 +948,10 @@ export class ReportsComponent implements OnInit {
       );
     }
     
-    // Reset to page 1 when filtering
-    this.currentPage = 1;
     this.updateAggregatedPagination(filtered);
   }
 
-  updatePagination(filteredData?: ReportItem[]) {
-    if (!filteredData) {
-      // Get fresh data if none provided
-      const storeData = this.getCurrentStoreData();
-      let freshFiltered = [...storeData];
-      
-      if (this.searchQuery.trim()) {
-        const q = this.searchQuery.toLowerCase();
-        freshFiltered = freshFiltered.filter(item =>
-          item.sku.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q) ||
-          item.type.toLowerCase().includes(q)
-        );
-      }
-      filteredData = freshFiltered;
-    }
-    
+  updatePagination(filteredData: ReportItem[] = this.displayedData) {
     this.totalPages = Math.max(Math.ceil(filteredData.length / this.itemsPerPage), 1);
     
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
@@ -1024,23 +965,7 @@ export class ReportsComponent implements OnInit {
     this.cdr.detectChanges();
   }
 
-  updateAggregatedPagination(filteredData?: AggregatedItem[]) {
-    if (!filteredData) {
-      // Get fresh data if none provided
-      let freshFiltered = [...this.aggregatedData];
-      
-      if (this.searchQuery.trim()) {
-        const q = this.searchQuery.toLowerCase();
-        freshFiltered = freshFiltered.filter(item =>
-          item.sku.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q) ||
-          item.type.toLowerCase().includes(q) ||
-          item.stores.some(store => store.toLowerCase().includes(q))
-        );
-      }
-      filteredData = freshFiltered;
-    }
-    
+  updateAggregatedPagination(filteredData: AggregatedItem[] = this.aggregatedData) {
     this.totalPages = Math.max(Math.ceil(filteredData.length / this.itemsPerPage), 1);
     
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
@@ -1057,8 +982,6 @@ export class ReportsComponent implements OnInit {
   nextPage() { 
     if (this.currentPage < this.totalPages) { 
       this.currentPage++; 
-      
-      // Get fresh data based on current filters
       if (this.selectedStore === 'All') {
         this.updateAggregatedPagination();
       } else {
@@ -1070,8 +993,6 @@ export class ReportsComponent implements OnInit {
   previousPage() { 
     if (this.currentPage > 1) { 
       this.currentPage--; 
-      
-      // Get fresh data based on current filters
       if (this.selectedStore === 'All') {
         this.updateAggregatedPagination();
       } else {
@@ -1081,7 +1002,7 @@ export class ReportsComponent implements OnInit {
   }
 
   createEmptyProduct(): ReportItem {
-    const weekInfo = this.selectedWeek || this.getCurrentWeek();
+    const currentWeek = this.getCurrentWeek();
     
     return { 
       store: this.selectedStore,
@@ -1095,16 +1016,15 @@ export class ReportsComponent implements OnInit {
       undelivered: 0, 
       fillRate: 0, 
       remarks: '',
-      weekStartDate: weekInfo.weekStartDate,
-      weekEndDate: weekInfo.weekEndDate,
-      weekNumber: weekInfo.weekNumber,
-      year: weekInfo.year
+      weekStartDate: currentWeek.weekStartDate,
+      weekEndDate: currentWeek.weekEndDate,
+      weekNumber: currentWeek.weekNumber,
+      year: currentWeek.year
     };
   }
 
   async calculateRow(item: ReportItem) {
-    this.isSavingData = true;
-    
+    // Calculate values
     item.undelivered = parseFloat((item.storeOrder - item.delivered).toFixed(1));
     
     if (item.storeOrder > 0) {
@@ -1123,22 +1043,22 @@ export class ReportsComponent implements OnInit {
       item.fillRate = 100;
     }
     
+    // Update remarks based on fill rate
     if (item.fillRate >= 95) item.remarks = 'Excellent';
     else if (item.fillRate >= 85) item.remarks = 'Good';
     else if (item.fillRate >= 70) item.remarks = 'Fair';
     else if (item.fillRate > 0) item.remarks = 'Needs Attention';
     else item.remarks = '';
     
+    // Save changes to database (only if item has an ID)
     if (item.id) {
       try {
         await this.saveToDatabase(item);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error saving calculation:', error);
-        this.showSnackbar('Failed to save changes to database', 'error');
+        this.showSnackbar('Failed to save changes to database: ' + (error?.message || String(error)), 'error');
       }
     }
-    
-    this.isSavingData = false;
   }
 
   getFillRateClass(fillRate: number): string {
@@ -1194,23 +1114,15 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
+    // Validate SKU format (alphanumeric with optional hyphens)
     const skuRegex = /^[A-Za-z0-9\-]+$/;
     if (!skuRegex.test(this.currentProduct.sku.trim())) {
       this.showSnackbar('SKU can only contain letters, numbers, and hyphens', 'warning');
       return;
     }
 
-    // Ensure the product has the correct week info
-    if (this.selectedWeek && !this.isEditing) {
-      this.currentProduct.weekStartDate = this.selectedWeek.weekStartDate;
-      this.currentProduct.weekEndDate = this.selectedWeek.weekEndDate;
-      this.currentProduct.weekNumber = this.selectedWeek.weekNumber;
-      this.currentProduct.year = this.selectedWeek.year;
-    }
-
-    this.isSavingData = true;
-    
     try {
+      // Save to database
       const savedItem = await this.saveToDatabase(this.currentProduct);
       
       if (!savedItem) {
@@ -1218,7 +1130,8 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      const storeData = this.allReportData.get(this.selectedStore) || [];
+      // Update local data
+      const storeData = this.getCurrentStoreData();
       
       if (this.isEditing) {
         const index = storeData.findIndex(p => p.id === savedItem.id);
@@ -1228,6 +1141,7 @@ export class ReportsComponent implements OnInit {
           this.showSnackbar(`Product "${savedItem.sku}" updated successfully`, 'success');
         }
       } else {
+        // Check for duplicate SKU in current store for the same week
         if (storeData.some(p => p.sku === savedItem.sku && 
             p.weekStartDate === savedItem.weekStartDate && 
             p.weekEndDate === savedItem.weekEndDate)) {
@@ -1240,19 +1154,22 @@ export class ReportsComponent implements OnInit {
         this.showSnackbar(`Product "${savedItem.sku}" added successfully to ${this.selectedStore}`, 'success');
       }
 
-      this.refreshCurrentView();
+      // Refresh the appropriate view
+      if (this.selectedStore === 'All') {
+        this.loadAggregatedData();
+      } else {
+        this.loadStoreData();
+      }
+      
       this.closeModal();
     } catch (error: any) {
       console.error('Error saving product:', error);
       
-      if (error.code === '23505') {
+      if (error.code === '23505') { // Unique constraint violation
         this.showSnackbar(`Product with SKU "${this.currentProduct.sku}" already exists in database for this week`, 'error');
       } else {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-        this.showSnackbar('Failed to save product: ' + errorMessage, 'error');
+        this.showSnackbar('Failed to save product: ' + error.message, 'error');
       }
-    } finally {
-      this.isSavingData = false;
     }
   }
 
@@ -1264,9 +1181,8 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    this.isSavingData = true;
-    
     try {
+      // Delete from database
       const success = await this.deleteFromDatabase(product.id);
       
       if (!success) {
@@ -1274,21 +1190,18 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      const storeData = this.allReportData.get(this.selectedStore) || [];
+      // Remove from local data
+      const storeData = this.getCurrentStoreData();
       const index = storeData.findIndex(p => p.id === product.id);
       if (index !== -1) {
         storeData.splice(index, 1);
         this.allReportData.set(this.selectedStore, storeData);
+        this.loadStoreData();
+        this.showSnackbar(`Product "${product.sku}" deleted successfully from ${this.selectedStore}`, 'error');
       }
-      
-      this.refreshCurrentView();
-      this.showSnackbar(`Product "${product.sku}" deleted successfully from ${this.selectedStore}`, 'error');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting product:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to delete product: ' + errorMessage, 'error');
-    } finally {
-      this.isSavingData = false;
+      this.showSnackbar('Failed to delete product: ' + (error?.message || String(error)), 'error');
     }
   }
 
@@ -1317,7 +1230,6 @@ export class ReportsComponent implements OnInit {
     }
 
     this.isLoading = true;
-    this.loadingMessage = 'Clearing store data...';
     try {
       const success = await this.clearStoreFromDatabase(
         this.selectedStore, 
@@ -1326,25 +1238,17 @@ export class ReportsComponent implements OnInit {
       );
       
       if (success) {
-        const allStoreData = this.allReportData.get(this.selectedStore) || [];
-        const filteredData = allStoreData.filter(item => 
-          !(item.weekStartDate === this.selectedWeek?.weekStartDate && 
-            item.weekEndDate === this.selectedWeek?.weekEndDate)
-        );
-        this.allReportData.set(this.selectedStore, filteredData);
-        
-        this.refreshCurrentView();
+        this.allReportData.set(this.selectedStore, []);
+        this.loadStoreData();
         this.showSnackbar(`All production data cleared for ${this.selectedStore}`, 'error');
       } else {
         this.showSnackbar('Failed to clear store data from database', 'error');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error clearing store data:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to clear store data: ' + errorMessage, 'error');
+      this.showSnackbar('Failed to clear store data: ' + (error?.message || String(error)), 'error');
     } finally {
       this.isLoading = false;
-      this.loadingMessage = '';
     }
   }
 
@@ -1421,8 +1325,7 @@ export class ReportsComponent implements OnInit {
       this.showSnackbar(`Report exported successfully as ${fileName}`, 'success');
     } catch (error: any) {
       console.error('Export error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to export report: ' + errorMessage, 'error');
+      this.showSnackbar('Failed to export report. Please try again.', 'error');
     }
   }
 
@@ -1492,8 +1395,7 @@ export class ReportsComponent implements OnInit {
       this.showSnackbar(`Aggregated report exported successfully as ${fileName}`, 'success');
     } catch (error: any) {
       console.error('Export error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to export aggregated report: ' + errorMessage, 'error');
+      this.showSnackbar('Failed to export aggregated report', 'error');
     }
   }
 
@@ -1504,9 +1406,14 @@ export class ReportsComponent implements OnInit {
 
   async refresh() {
     await this.loadReportsFromDatabase();
-    this.refreshCurrentView();
+    if (this.selectedStore === 'All') {
+      this.loadAggregatedData();
+    } else if (this.selectedStore && this.selectedStore !== 'custom') {
+      this.loadStoreData();
+    }
   }
 
+  // Method to copy previous week's data
   async copyFromPreviousWeek() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -1518,12 +1425,13 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
+    // Calculate previous week
     const prevWeekDate = new Date(this.selectedWeek.weekStartDate);
     prevWeekDate.setDate(prevWeekDate.getDate() - 7);
     const prevWeek = this.getWeekForDate(prevWeekDate);
 
+    // Load previous week's data from database
     this.isLoading = true;
-    this.loadingMessage = 'Copying from previous week...';
     try {
       const { data, error } = await this.supabase['supabase']
         .from('production_reports')
@@ -1543,45 +1451,51 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
+      // Copy data to current week
       const newItems = data.map(dbItem => {
         const localItem = this.fromDatabaseFormat(dbItem);
+        // Update week info
         localItem.weekStartDate = this.selectedWeek!.weekStartDate;
         localItem.weekEndDate = this.selectedWeek!.weekEndDate;
         localItem.weekNumber = this.selectedWeek!.weekNumber;
         localItem.year = this.selectedWeek!.year;
+        // Reset delivered and undelivered
         localItem.delivered = 0;
         localItem.undelivered = localItem.storeOrder;
         localItem.fillRate = 0;
         localItem.remarks = '';
+        // Remove id for new record
         delete localItem.id;
         delete localItem.created_at;
         
         return localItem;
       });
 
+      // Save all new items
       for (const item of newItems) {
         await this.saveToDatabase(item);
       }
 
+      // Reload data
       await this.loadReportsFromDatabase();
       this.showSnackbar(`Copied ${newItems.length} items from previous week`, 'success');
 
     } catch (error: any) {
       console.error('Error copying previous week data:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar('Failed to copy previous week data: ' + errorMessage, 'error');
+      this.showSnackbar('Failed to copy previous week data: ' + (error?.message || String(error)), 'error');
     } finally {
       this.isLoading = false;
-      this.loadingMessage = '';
     }
   }
 
+  // Test database connection method
   async testDatabaseConnection(): Promise<boolean> {
     try {
       this.showSnackbar('Testing database connection...', 'info');
       
       console.log('Testing production_reports table connection...');
       
+      // Test 1: Simple query to see if table exists
       const { data: testData, error: testError } = await this.supabase['supabase']
         .from('production_reports')
         .select('count')
@@ -1592,20 +1506,14 @@ export class ReportsComponent implements OnInit {
         
         if (testError.code === 'PGRST204') {
           this.showSnackbar(
-            'Database schema cache issue detected. The app will use workarounds.',
+            'Database schema cache needs refresh. Please run "NOTIFY pgrst, \'reload schema\'" in Supabase SQL Editor.',
             'warning'
           );
-          return true;
-        } else if (testError.code === '42P01') {
-          this.showSnackbar(
-            'Production reports table not found. It will be created when you add your first product.',
-            'info'
-          );
-          return true;
         } else {
           this.showSnackbar(`Database connection failed: ${testError.message}`, 'error');
-          return false;
         }
+        
+        return false;
       }
       
       console.log('Database connection test successful:', testData);
@@ -1614,36 +1522,8 @@ export class ReportsComponent implements OnInit {
       
     } catch (error: any) {
       console.error('Test failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.showSnackbar(`Database test failed: ${errorMessage}`, 'error');
+      this.showSnackbar(`Database test failed: ${error.message}`, 'error');
       return false;
-    }
-  }
-
-  async fixSchemaCache(): Promise<void> {
-    try {
-      this.showSnackbar('Attempting to fix schema cache...', 'info');
-      
-      const { error } = await this.supabase['supabase']
-        .from('production_reports')
-        .select('id')
-        .limit(1);
-      
-      if (error && error.code === 'PGRST204') {
-        this.showSnackbar(
-          'Schema cache still needs refresh. Please run "NOTIFY pgrst, \'reload schema\'" in Supabase SQL Editor.',
-          'warning'
-        );
-      } else {
-        this.showSnackbar(
-          'Schema cache appears to be working now!',
-          'success'
-        );
-        this.hasSchemaCacheError = false;
-      }
-    } catch (error) {
-      console.error('Error fixing schema cache:', error);
-      this.showSnackbar('Failed to check schema cache', 'error');
     }
   }
 }
