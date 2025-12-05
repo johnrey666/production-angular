@@ -1,211 +1,705 @@
-<div class="reports" @fadeInUp>
+<div class="reports compact-mode">
+  <!-- Modern Loading Overlay -->
+  <div *ngIf="isLoading" class="loading-overlay">
+    <div class="loading-container floating-loader">
+      <div class="modern-spinner">
+        <div class="spinner-ring spinner-ring-outer"></div>
+        <div class="spinner-ring spinner-ring-middle"></div>
+        <div class="spinner-ring spinner-ring-inner"></div>
+        <div class="spinner-ring spinner-ring-center"></div>
+      </div>
+      
+      <div class="loading-text">{{ loadingMessage || 'Loading' }}</div>
+      
+      <div *ngIf="loadingProgress" class="loading-subtext">
+        {{ loadingProgress }}
+      </div>
+      
+      <!-- Progress Bar (for initialization) -->
+      <div *ngIf="isInitializing" class="loading-progress">
+        <div class="loading-progress-bar"></div>
+      </div>
+      
+      <!-- Loading Dots -->
+      <div *ngIf="!isInitializing" class="loading-dots">
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <div class="page-header">
     <div>
-      <h1>Reports</h1>
-      <p>Production analytics and performance reports</p>
+      <h1>Weekly Production Reports</h1>
+      <p class="compact-subtitle">Track weekly production data</p>
     </div>
-  </div>
-
-  <!-- Report Controls -->
-  <div class="controls-card">
-    <div class="date-controls">
-      <input 
-        type="month" 
-        [(ngModel)]="selectedMonth" 
-        (change)="generateReport()"
-        class="month-input"
-      >
-      <div class="control-buttons">
-        <button class="btn-primary" (click)="exportCSV()">
-          <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M3.5 10.5L7 7M7 7L10.5 10.5M7 7V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M2.5 4H4.5C5.05228 4 5.5 3.55228 5.5 3V1.5M8.5 1.5V3C8.5 3.55228 8.94772 4 9.5 4H11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-          Export CSV
-        </button>
-        <button class="btn-secondary" (click)="printReport()">
-          <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M3.5 5V3C3.5 2.44772 3.94772 2 4.5 2H9.5C10.0523 2 10.5 2.44772 10.5 3V5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <rect x="2" y="5" width="10" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M4.5 10V12M9.5 10V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-          Print
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Summary Stats -->
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-value">{{ summaryData.totalDays }}</div>
-        <div class="stat-label">Production Days</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-value">{{ summaryData.totalOutput | number:'1.0-0' }}</div>
-        <div class="stat-label">Output (kg)</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-value">{{ summaryData.totalCost | currency:'₱':'symbol':'1.0-0' }}</div>
-        <div class="stat-label">Total Cost</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-value">{{ summaryData.avgCostPerKg | currency:'₱':'symbol':'1.1-1' }}</div>
-        <div class="stat-label">Avg ₱/kg</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Production Report Table -->
-  <div class="table-card">
-    <div class="card-header">
-      <div>
-        <h2 class="card-title">Production Report</h2>
-        <p class="card-subtitle">{{ selectedMonth | date:'MMMM yyyy' }}</p>
-      </div>
-      <button class="btn-secondary" (click)="toggleVarianceView()">
-        {{ showVarianceOnly ? 'Show All' : 'Variance Only' }}
-      </button>
-    </div>
-
-    <div class="table-container">
-      <table class="report-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Product</th>
-            <th class="text-right">Batches</th>
-            <th class="text-right">Expected</th>
-            <th class="text-right">Actual</th>
-            <th class="text-right">Raw Used</th>
-            <th class="text-right">Cost</th>
-            <th class="text-right">Variance</th>
-            <th class="text-center">Efficiency</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let record of filteredRecords" @slideIn 
-              [class.high-variance]="record.variance > 10 || record.variance < -10">
-            <td class="date">{{ record.date }}</td>
-            <td class="product">{{ record.product }}</td>
-            <td class="text-right number">{{ record.batches | number:'1.1-1' }}</td>
-            <td class="text-right number">{{ record.expected | number:'1.1-1' }}</td>
-            <td class="text-right number">{{ record.actual | number:'1.1-1' }}</td>
-            <td class="text-right number">{{ record.rawUsed | number:'1.1-1' }}</td>
-            <td class="text-right cost">{{ record.rawCost | currency:'₱':'symbol':'1.0-0' }}</td>
-            <td class="text-right variance" [class]="record.variance >= 0 ? 'positive' : 'negative'">
-              {{ record.variance >= 0 ? '+' : '' }}{{ record.variance | number:'1.1-1' }}
-            </td>
-            <td class="text-center">
-              <div class="efficiency-badge" [class]="getEfficiencyClass(calculateEfficiency(record))">
-                {{ calculateEfficiency(record) }}%
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Empty State -->
-    <div *ngIf="filteredRecords.length === 0" class="empty-state">
-      <div class="empty-icon">
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <path d="M16 12V20M12 16H20" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round"/>
-          <rect x="8" y="8" width="16" height="16" rx="2" stroke="#9CA3AF" stroke-width="1.5"/>
+    <div class="header-actions">
+      <button class="btn-danger btn-compact" (click)="clearCurrentStoreData()" title="Clear Store" 
+              [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoading">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
         </svg>
-      </div>
-      <p>No production data for this period</p>
-      <button class="btn-secondary" (click)="loadSampleData()">
-        Load Sample Data
+        Clear
+      </button>
+      <button class="btn-primary btn-compact" (click)="exportToExcel()" [disabled]="isLoading">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Export
+      </button>
+      <button class="btn-secondary btn-compact" (click)="fixSchemaCache()" title="Fix Cache" [disabled]="isLoading">
+        🔄 Fix
       </button>
     </div>
-
-    <!-- Report Summary -->
-    <div class="table-footer" *ngIf="filteredRecords.length > 0">
-      <div class="summary">
-        <div class="summary-item">
-          <span class="summary-label">Total Records:</span>
-          <span class="summary-value">{{ filteredRecords.length }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Positive Variance:</span>
-          <span class="summary-value positive">{{ getPositiveVarianceCount() }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Negative Variance:</span>
-          <span class="summary-value negative">{{ getNegativeVarianceCount() }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Avg Efficiency:</span>
-          <span class="summary-value">{{ getAverageEfficiency() }}%</span>
-        </div>
-      </div>
-    </div>
   </div>
 
-  <!-- Charts & Metrics -->
-  <div class="content-grid" *ngIf="filteredRecords.length > 0">
-    <!-- Chart -->
-    <div class="table-card">
-      <div class="card-header">
-        <h2 class="card-title">Production Trends</h2>
-        <div class="chart-legend">
-          <div class="legend-item">
-            <div class="legend-dot expected"></div>
-            <span>Expected</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot actual"></div>
-            <span>Actual</span>
-          </div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="chart-placeholder">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <path d="M8 32L20 24L28 28L40 20" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M8 24L20 20L28 24L40 16" stroke="#E5E7EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Snackbar -->
+  <div class="snackbar-container" *ngIf="snackbarMessage">
+    <div class="snackbar" [class]="'snackbar-' + snackbarType">
+      <div class="snackbar-content">
+        <div class="snackbar-icon">
+          <svg *ngIf="snackbarType === 'success'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
           </svg>
-          <p>Production trend visualization</p>
-          <small>Daily expected vs actual output</small>
+          <svg *ngIf="snackbarType === 'error'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
+        <div class="snackbar-message">{{ snackbarMessage }}</div>
+      </div>
+      <button class="snackbar-close" (click)="hideSnackbar()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Table Card -->
+  <div class="table-card compact-card">
+    <!-- Header -->
+    <div class="card-header compact-header">
+      <div class="header-top-row compact-top-row">
+        <!-- Week Selector -->
+        <div class="week-selector compact-selector">
+          <button class="week-selector-btn compact-btn" (click)="showWeekSelector = !showWeekSelector" [disabled]="isLoading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span class="week-selector-text compact-text">
+              {{ selectedWeek?.label || 'Select Week' }}
+            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          
+          <!-- Week Dropdown -->
+          <div class="week-dropdown compact-dropdown" *ngIf="showWeekSelector" (click)="$event.stopPropagation()">
+            <div class="week-dropdown-header compact-dropdown-header">
+              <h4 class="compact-dropdown-title">Select Week</h4>
+              <button class="week-dropdown-close compact-close" (click)="showWeekSelector = false">×</button>
+            </div>
+            <div class="week-list compact-list">
+              <div *ngFor="let week of availableWeeks" 
+                   class="week-option compact-option"
+                   [class.selected]="selectedWeek?.weekStartDate === week.weekStartDate"
+                   (click)="onWeekChange(week)">
+                {{ week.label }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Store Selector -->
+        <div class="store-selector-compact">
+          <select class="store-dropdown compact-dropdown" 
+                  [(ngModel)]="selectedStore" 
+                  (change)="onStoreChange()"
+                  [disabled]="isLoading">
+            <option value="">-- Select Store --</option>
+            <option value="All">📊 All Stores</option>
+            <option *ngFor="let store of allStores.slice(1)" [value]="store">{{ store }}</option>
+            <option value="custom">+ Add Store</option>
+          </select>
+          
+          <div *ngIf="selectedStore === 'custom'" class="custom-store-input-compact">
+            <input 
+              type="text" 
+              class="form-input compact-input"
+              [(ngModel)]="newStoreName"
+              placeholder="New store name"
+              (keyup.enter)="addCustomStore()"
+              style="width: 150px;"
+              [disabled]="isLoading"
+            >
+            <button class="btn-icon-add compact-icon-btn" (click)="addCustomStore()" title="Add" [disabled]="isLoading">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <button class="btn-icon-cancel compact-icon-btn" (click)="selectedStore = ''" title="Cancel" [disabled]="isLoading">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Row: Search and Actions -->
+      <div class="header-bottom-row compact-bottom-row">
+        <div class="compact-action-group">
+          <div class="search-container compact-search">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              type="text" 
+              class="form-input compact-input search-input" 
+              placeholder="Search SKU..." 
+              [(ngModel)]="searchQuery"
+              (input)="applyFiltersAndSearch()"
+              [disabled]="isLoading"
+            >
+          </div>
+          
+          <button class="btn-primary btn-compact" 
+                  (click)="addNewProduct()" 
+                  [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add
+          </button>
+          
+          <button class="btn-secondary btn-compact" 
+                  (click)="copyFromPreviousWeek()" 
+                  [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoading"
+                  title="Copy from previous week">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+
+          <button class="btn-secondary btn-compact" 
+                  (click)="initializeWeekWithAllSkus()" 
+                  [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoadingCatalog || isLoading"
+                  title="Initialize with all SKUs">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Init
+            <span *ngIf="isLoadingCatalog" class="inline-loader"></span>
+          </button>
+        </div>
+
+        <!-- Item Count -->
+        <div class="header-right-section">
+          <div class="item-count-badge compact-badge" *ngIf="selectedStore && selectedStore !== 'custom' && selectedStore !== 'All'">
+            {{ getCurrentStoreData().length }}
+          </div>
+          <div class="item-count-badge aggregated-badge compact-badge" *ngIf="selectedStore === 'All'">
+            {{ aggregatedData.length }}
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Metrics -->
-    <div class="table-card">
-      <div class="card-header">
-        <h2 class="card-title">Key Metrics</h2>
-      </div>
-      <div class="card-body">
-        <div class="metrics-list">
-          <div class="metric-item">
-            <div class="metric-label">Best Product</div>
-            <div class="metric-value">{{ getBestProduct() }}</div>
+    <!-- Week Info Banner (compact) -->
+    <div *ngIf="selectedWeek" class="week-info-banner compact-info">
+      <div class="week-info-content">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        <div class="week-info-details compact-details">
+          <div class="week-info-title compact-title">
+            <strong>Week {{ selectedWeek.weekNumber }}, {{ selectedWeek.year }}</strong>
+            <span class="week-date-range compact-date">{{ formatDate(selectedWeek.weekStartDate) }} - {{ formatDate(selectedWeek.weekEndDate) }}</span>
           </div>
-          <div class="metric-item">
-            <div class="metric-label">Highest Variance</div>
-            <div class="metric-value">{{ getHighestVarianceDate() }}</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">Cost Efficiency</div>
-            <div class="metric-value">{{ getCostEfficiency() }}%</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">Recommendation</div>
-            <div class="metric-note">{{ getRecommendation() }}</div>
+          <div class="week-info-stats compact-stats">
+            <span class="week-stat compact-stat">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              </svg>
+              {{ allReportData.size }} stores
+            </span>
+            <span class="week-stat compact-stat">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              {{ selectedStore === 'All' ? aggregatedData.length : getCurrentStoreData().length }} items
+            </span>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Loading State when data is being fetched -->
+    <div *ngIf="isLoading && (selectedStore || selectedStore === 'All')" class="table-loading-state">
+      <div class="table-loading-spinner"></div>
+      <div class="compact-loading-text">{{ loadingMessage || 'Loading data...' }}</div>
+      <div class="wave-loader">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+    </div>
+
+    <!-- Empty State when no store selected -->
+    <div *ngIf="!selectedStore || selectedStore === 'custom'" class="empty-state compact-empty">
+      <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 32px; margin-bottom: 12px; color: #9ca3af;">🏪</div>
+        <h3 style="color: #374151; margin-bottom: 8px; font-size: 14px;">Select a Store</h3>
+        <p style="color: #6b7280; max-width: 500px; margin: 0 auto; font-size: 12px;">
+          Choose a store from the dropdown to view and manage its production data.
+        </p>
+        <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 600px; margin: 12px auto 0;">
+          <span *ngFor="let store of allStores.slice(1, 8)" 
+                class="store-option-tag compact-store-tag"
+                (click)="selectedStore = store; onStoreChange()">
+            {{ store }}
+          </span>
+          <span class="store-option-tag all-stores-tag compact-store-tag"
+                (click)="selectedStore = 'All'; onStoreChange()">
+            📊 All
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aggregated View (All Stores) -->
+    <div *ngIf="selectedStore === 'All' && !isLoading">
+      <div class="aggregated-view compact-aggregated">
+        <div class="view-header compact-view-header">
+          <h3 class="compact-aggregated-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            </svg>
+            Aggregated View - All Stores - Week {{ selectedWeek?.weekNumber }}
+          </h3>
+          <div class="aggregated-stats compact-aggregated-stats">
+            <span class="stat-badge compact-stat-badge">
+              <strong>{{ aggregatedData.length }}</strong> SKUs
+            </span>
+            <span class="stat-badge compact-stat-badge">
+              <strong>{{ allReportData.size }}</strong> Stores
+            </span>
+          </div>
+        </div>
+        
+        <div class="table-container">
+          <table class="materials-table aggregated-table compact-table">
+            <thead>
+              <tr>
+                <th style="width: 100px;">SKU</th>
+                <th style="width: 180px;">Description</th>
+                <th style="width: 50px;">UM</th>
+                <th style="width: 80px;" class="text-right">Price</th>
+                <th style="width: 80px;" class="text-right">Stores</th>
+                <th style="width: 90px;" class="text-right">Order</th>
+                <th style="width: 90px;" class="text-right">Delivered</th>
+                <th style="width: 90px;" class="text-right">Undel</th>
+                <th style="width: 70px;" class="text-center">Fill</th>
+                <th style="width: 150px;">Stores List</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngIf="displayedAggregatedData.length === 0 && !isLoading">
+                <td colspan="10" class="empty-state compact-empty">
+                  <div style="text-align: center; padding: 30px;">
+                    <div style="font-size: 24px; margin-bottom: 8px; color: #9ca3af;">📊</div>
+                    <h4 style="color: #374151; margin-bottom: 4px; font-size: 14px;">No Aggregated Data</h4>
+                    <p style="color: #6b7280; font-size: 12px;">Add products to stores for this week</p>
+                  </div>
+                </td>
+              </tr>
+              
+              <tr *ngFor="let item of displayedAggregatedData">
+                <td>
+                  <div class="sku-cell compact-sku">
+                    <strong>{{ item.sku }}</strong>
+                  </div>
+                </td>
+                
+                <td>
+                  <div class="material-description compact-description">
+                    <div class="description-text">{{ item.description }}</div>
+                    <div class="product-type-badge compact-type-badge" [class]="getTypeClass(item.type)">
+                      {{ item.type }}
+                    </div>
+                  </div>
+                </td>
+                
+                <td class="text-center">
+                  <span class="um-badge compact-um">{{ item.um }}</span>
+                </td>
+                
+                <td class="text-right">
+                  <div class="price-cell compact-price">₱{{ item.price | number:'1.2-2' }}</div>
+                </td>
+                
+                <td class="text-right">
+                  <div class="store-count-badge compact-store-count">
+                    {{ item.storeCount }}
+                  </div>
+                </td>
+                
+                <td class="text-right">
+                  <div class="total-value compact-total">
+                    {{ item.totalStoreOrder | number:'1.1-1' }}
+                  </div>
+                </td>
+                
+                <td class="text-right">
+                  <div class="total-value compact-total">
+                    {{ item.totalDelivered | number:'1.1-1' }}
+                  </div>
+                </td>
+                
+                <td class="text-right">
+                  <div class="undelivered-cell compact-undelivered" [class]="item.totalUndelivered > 0 ? 'negative' : ''">
+                    {{ item.totalUndelivered | number:'1.1-1' }}
+                  </div>
+                </td>
+                
+                <td class="text-center">
+                  <div class="fill-rate-badge compact-fill-rate" [class]="getFillRateClass(item.fillRate)">
+                    {{ item.fillRate }}%
+                  </div>
+                </td>
+                
+                <td>
+                  <div class="stores-cell compact-stores" title="{{ item.stores.join(', ') }}">
+                    {{ item.stores.join(', ') }}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Aggregated Pagination -->
+        <div class="pagination compact-pagination" *ngIf="aggregatedData.length > 0 && !isLoading">
+          <div class="pagination-info compact-pagination-info">
+            {{ startIndex + 1 }}-{{ endIndex }} of {{ aggregatedData.length }}
+          </div>
+          <div class="pagination-controls compact-pagination-controls">
+            <button class="pagination-btn compact-pagination-btn" (click)="previousPage()" [disabled]="currentPage === 1 || isLoading">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              Prev
+            </button>
+            <div class="page-numbers compact-page-numbers">
+              <span class="current-page">{{ currentPage }}</span>
+              <span class="total-pages">/{{ totalPages }}</span>
+            </div>
+            <button class="pagination-btn compact-pagination-btn" (click)="nextPage()" [disabled]="currentPage === totalPages || isLoading">
+              Next
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single Store View -->
+    <div *ngIf="selectedStore && selectedStore !== 'custom' && selectedStore !== 'All' && !isLoading">
+      <div class="table-container">
+        <table class="materials-table compact-table">
+          <thead>
+            <tr>
+              <th style="width: 100px;">SKU</th>
+              <th style="width: 180px;">Description</th>
+              <th style="width: 50px;">UM</th>
+              <th style="width: 80px;" class="text-right">Price</th>
+              <th style="width: 100px;" class="text-right">Order</th>
+              <th style="width: 100px;" class="text-right">Delivered</th>
+              <th style="width: 90px;" class="text-right">Undel</th>
+              <th style="width: 70px;" class="text-center">Fill</th>
+              <th style="width: 120px;">Remarks</th>
+              <th style="width: 70px;" class="fixed-column">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="displayedData.length === 0">
+              <td colspan="10" class="empty-state compact-empty">
+                <div style="text-align: center; padding: 30px;">
+                  <div style="font-size: 24px; margin-bottom: 8px; color: #9ca3af;">📊</div>
+                  <h4 style="color: #374151; margin-bottom: 4px; font-size: 14px;">No Production Data</h4>
+                  <p style="color: #6b7280; font-size: 12px;">Click "Add" or "Init" to start tracking</p>
+                </div>
+              </td>
+            </tr>
+            
+            <tr *ngFor="let item of displayedData">
+              <td>
+                <div class="sku-cell compact-sku">
+                  <strong>{{ item.sku }}</strong>
+                </div>
+              </td>
+              
+              <td>
+                <div class="material-description compact-description">
+                  <div class="description-text">{{ item.description }}</div>
+                  <div class="product-type-badge compact-type-badge" [class]="getTypeClass(item.type)">
+                    {{ item.type }}
+                  </div>
+                </div>
+              </td>
+              
+              <td class="text-right">
+                <span class="um-badge compact-um">{{ item.um }}</span>
+              </td>
+              
+              <td class="text-right">
+                <div class="price-cell compact-price">₱{{ item.price | number:'1.2-2' }}</div>
+              </td>
+              
+              <td class="text-right">
+                <input 
+                  type="number" 
+                  [(ngModel)]="item.storeOrder"
+                  (input)="calculateRow(item)"
+                  class="form-input compact-input table-input"
+                  style="width: 80px; text-align: right;"
+                  step="0.1"
+                  min="0"
+                  placeholder="0.0"
+                  [disabled]="isSavingData"
+                >
+              </td>
+              
+              <td class="text-right">
+                <input 
+                  type="number" 
+                  [(ngModel)]="item.delivered"
+                  (input)="calculateRow(item)"
+                  class="form-input compact-input table-input"
+                  style="width: 80px; text-align: right;"
+                  step="0.1"
+                  min="0"
+                  placeholder="0.0"
+                  [disabled]="isSavingData"
+                >
+              </td>
+              
+              <td class="text-right">
+                <div class="undelivered-cell compact-undelivered" [class]="item.undelivered > 0 ? 'negative' : ''">
+                  {{ item.undelivered | number:'1.1-1' }}
+                </div>
+              </td>
+              
+              <td class="text-center">
+                <div class="fill-rate-badge compact-fill-rate" [class]="getFillRateClass(item.fillRate)">
+                  {{ item.fillRate }}%
+                </div>
+              </td>
+              
+              <td>
+                <input 
+                  type="text" 
+                  [(ngModel)]="item.remarks"
+                  class="form-input compact-input table-input"
+                  style="width: 100%;"
+                  placeholder="Remarks..."
+                  [disabled]="isSavingData"
+                >
+              </td>
+              
+              <td class="fixed-column">
+                <div class="action-buttons compact-actions">
+                  <button class="btn-icon-edit compact-icon-btn" (click)="editProduct(item)" title="Edit" [disabled]="isSavingData">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </button>
+                  <button class="btn-icon-danger compact-icon-btn" (click)="deleteProduct(item)" title="Delete" [disabled]="isSavingData">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination compact-pagination" *ngIf="getCurrentStoreData().length > 0">
+        <div class="pagination-info compact-pagination-info">
+          {{ startIndex + 1 }}-{{ endIndex }} of {{ getCurrentStoreData().length }}
+        </div>
+        <div class="pagination-controls compact-pagination-controls">
+          <button class="pagination-btn compact-pagination-btn" (click)="previousPage()" [disabled]="currentPage === 1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            Prev
+          </button>
+          <div class="page-numbers compact-page-numbers">
+            <span class="current-page">{{ currentPage }}</span>
+            <span class="total-pages">/{{ totalPages }}</span>
+          </div>
+          <button class="pagination-btn compact-pagination-btn" (click)="nextPage()" [disabled]="currentPage === totalPages">
+            Next
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- Add/Edit Modal -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+    <div class="modal-container compact-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header compact-modal-header">
+        <h2 class="modal-title compact-modal-title">{{ isEditing ? 'Edit' : 'Add' }} Product</h2>
+        <button class="modal-close compact-modal-close" (click)="closeModal()">×</button>
+      </div>
+      
+      <div class="modal-body compact-modal-body">
+        <form (ngSubmit)="saveProduct()" #form="ngForm">
+          <div class="form-group compact-form-group">
+            <label class="compact-label">Store</label>
+            <div class="form-input-static compact-static">{{ selectedStore }}</div>
+          </div>
+          
+          <div class="form-group compact-form-group">
+            <label class="compact-label">Week</label>
+            <div class="form-input-static compact-static">
+              Week {{ selectedWeek?.weekNumber }}, {{ selectedWeek?.year }}
+              <br>
+              <small class="compact-small">{{ formatDate(selectedWeek?.weekStartDate || '') }} - {{ formatDate(selectedWeek?.weekEndDate || '') }}</small>
+            </div>
+          </div>
+          
+          <!-- SKU Selection (only for new products) -->
+          <div class="form-group compact-form-group" *ngIf="!isEditing">
+            <label class="compact-label">Select SKU *</label>
+            <select 
+              class="form-input compact-input" 
+              [(ngModel)]="currentProduct.sku" 
+              name="sku" 
+              required
+              (change)="onSkuSelect(currentProduct.sku)"
+              [disabled]="isLoadingCatalog || isSavingData"
+            >
+              <option value="">-- Select SKU --</option>
+              <option *ngFor="let item of skuCatalog" [value]="item.sku">
+                {{ item.sku }} - {{ item.description }}
+              </option>
+            </select>
+            <small *ngIf="isLoadingCatalog" class="compact-small">
+              <div class="compact-loader">
+                <div class="compact-loader-dot"></div>
+                <div class="compact-loader-dot"></div>
+                <div class="compact-loader-dot"></div>
+              </div>
+              Loading SKU catalog...
+            </small>
+          </div>
+          
+          <!-- For editing, show SKU as read-only -->
+          <div class="form-group compact-form-group" *ngIf="isEditing">
+            <label class="compact-label">SKU</label>
+            <div class="form-input-static compact-static">
+              <strong>{{ currentProduct.sku }}</strong> - {{ currentProduct.description }}
+            </div>
+          </div>
+          
+          <div class="form-row compact-form-row">
+            <div class="form-group compact-form-group">
+              <label class="compact-label">Store Order</label>
+              <input 
+                type="number" 
+                class="form-input compact-input" 
+                [(ngModel)]="currentProduct.storeOrder" 
+                name="storeOrder"
+                step="0.1"
+                min="0"
+                placeholder="0.0"
+                required
+                [disabled]="isSavingData"
+              >
+            </div>
+            
+            <div class="form-group compact-form-group">
+              <label class="compact-label">Delivered</label>
+              <input 
+                type="number" 
+                class="form-input compact-input" 
+                [(ngModel)]="currentProduct.delivered" 
+                name="delivered"
+                step="0.1"
+                min="0"
+                placeholder="0.0"
+                required
+                [disabled]="isSavingData"
+              >
+            </div>
+          </div>
+          
+          <div class="form-group compact-form-group">
+            <label class="compact-label">Remarks</label>
+            <input 
+              type="text" 
+              class="form-input compact-input" 
+              [(ngModel)]="currentProduct.remarks" 
+              name="remarks"
+              placeholder="Enter remarks..."
+              [disabled]="isSavingData"
+            >
+          </div>
+          
+          <div class="modal-footer compact-modal-footer">
+            <button type="button" class="btn-secondary btn-compact" (click)="closeModal()" [disabled]="isSavingData">Cancel</button>
+            <button type="submit" class="btn-primary btn-compact" 
+                    [disabled]="form.invalid || (!isEditing && !currentProduct.sku) || isSavingData"
+                    [class.btn-loading]="isSavingData">
+              <span *ngIf="!isSavingData">{{ isEditing ? 'Update' : 'Save' }}</span>
+              <span *ngIf="isSavingData">Saving...</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Week Dropdown Overlay -->
+  <div class="week-dropdown-overlay" *ngIf="showWeekSelector" (click)="showWeekSelector = false"></div>
 </div>

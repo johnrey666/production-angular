@@ -1,6 +1,7 @@
-import { Component, OnInit, inject, ChangeDetectorRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject, debounceTime } from 'rxjs';
 import { SupabaseService, RecipeWithDetails, RecipeItem, ProductionLog } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
 
@@ -37,6 +38,41 @@ interface ProductionEntry {
   isExpanded: boolean;      // Collapsible state
 }
 
+// Monthly Entry interface - Now same as ProductionEntry but with aggregated data
+interface MonthlyEntry {
+  recipe: ProductionRecipe;
+  orderKg: number;          // Total order for the month
+  isExpanded: boolean;      // Collapsible state
+  daysWithOrders: number;   // Number of days with orders
+  totalActualOutput: number; // Sum of actual output for the month
+  totalRawMatCost: number;   // Sum of raw material cost for the month
+  skus: ProductionSku[];     // Aggregated SKU data for the month
+  premixes: ProductionSku[]; // Aggregated premix data for the month
+}
+
+// Helper function to convert RecipeItem to ProductionSku
+function convertRecipeItemToProductionSku(item: RecipeItem): ProductionSku {
+  return {
+    ...item,
+    actualOutput: 0,
+    variance: 0,
+    rawMatCost: 0,
+    remark: ''
+  };
+}
+
+// Helper function to convert RecipeWithDetails to ProductionRecipe
+function convertRecipeWithDetailsToProductionRecipe(recipe: RecipeWithDetails): ProductionRecipe {
+  return {
+    id: recipe.id,
+    name: recipe.name,
+    std_yield: recipe.std_yield,
+    created_at: recipe.created_at,
+    skus: recipe.skus.map(convertRecipeItemToProductionSku),
+    premixes: recipe.premixes.map(convertRecipeItemToProductionSku)
+  };
+}
+
 @Component({
   selector: 'app-production',
   standalone: true,
@@ -44,13 +80,19 @@ interface ProductionEntry {
   templateUrl: './production.html',
   styleUrls: ['./production.css']
 })
-export class ProductionComponent implements OnInit {
+export class ProductionComponent implements OnInit, OnDestroy {
   private supabase = inject(SupabaseService);
   private cdr = inject(ChangeDetectorRef);
+  
+  // Auto-save subject
+  private saveSubject = new Subject<void>();
+  private autoSaveSubscription: any;
 
   // Data
   entries: ProductionEntry[] = [];
   filteredEntries: ProductionEntry[] = [];
+  monthlyEntries: MonthlyEntry[] = [];
+  filteredMonthlyEntries: MonthlyEntry[] = [];
   
   // Dates
   selectedDate: string = new Date().toISOString().split('T')[0];
@@ -61,29 +103,40 @@ export class ProductionComponent implements OnInit {
   currentMonth: number;
   currentYear: number;
   calendarDays: number[] = [];
+  monthlyTotal: number = 0;
+  productionByDay = new Map<number, number>();
+  
+  // View Mode
+  viewMode: 'daily' | 'monthly' = 'daily';
   
   // UI State
-  isLoading = true;
+  isLoading = false;
   errorMessage = '';
   searchQuery = '';
-  showSaveModal = false;
+  monthlySearchQuery = '';
   isDataLoadedFromStorage = false; // Track if data is from localStorage
   
   // Snackbar
   snackbarMessage = '';
-  snackbarType: 'success' | 'error' | 'warning' = 'success';
+  snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
   
   // Pagination
   currentPage = 1;
+  monthlyCurrentPage = 1;
   itemsPerPage = 5;
-  
-  // Save Modal
-  productionDate = new Date().toISOString().split('T')[0];
-  batchName = '';
-  
+
   get today(): string {
     return new Date().toISOString().split('T')[0];
+  }
+
+  get monthlyPaginated() {
+    const start = (this.monthlyCurrentPage - 1) * this.itemsPerPage;
+    return this.filteredMonthlyEntries.slice(start, start + this.itemsPerPage);
+  }
+
+  get monthlyTotalPages(): number {
+    return Math.max(1, Math.ceil(this.filteredMonthlyEntries.length / this.itemsPerPage));
   }
 
   constructor() {
@@ -96,11 +149,30 @@ export class ProductionComponent implements OnInit {
     this.initializeDates();
     this.loadData();
     this.generateCalendar();
+    
+    // Setup auto-save with debounce (shorter delay)
+    this.setupAutoSave();
+  }
+
+  ngOnDestroy() {
+    if (this.autoSaveSubscription) {
+      this.autoSaveSubscription.unsubscribe();
+    }
+    if (this.snackbarTimeout) {
+      clearTimeout(this.snackbarTimeout);
+    }
   }
 
   // Calendar Methods
-  toggleCalendar() {
-    this.showCalendar = !this.showCalendar;
+  async toggleCalendar() {
+    // Close if already open, open if closed
+    if (this.showCalendar) {
+      this.showCalendar = false;
+    } else {
+      this.showCalendar = true;
+      await this.loadMonthlyTotal();
+    }
+    
     this.cdr.detectChanges();
   }
 
@@ -130,6 +202,7 @@ export class ProductionComponent implements OnInit {
       this.currentMonth--;
     }
     this.generateCalendar();
+    this.loadMonthlyTotal();
     this.cdr.detectChanges();
   }
 
@@ -141,6 +214,7 @@ export class ProductionComponent implements OnInit {
       this.currentMonth++;
     }
     this.generateCalendar();
+    this.loadMonthlyTotal();
     this.cdr.detectChanges();
   }
 
@@ -161,27 +235,61 @@ export class ProductionComponent implements OnInit {
     });
   }
 
-  // FIXED: The -1 day bug is GONE — now 100% accurate
-  selectDate(day: number) {
+  // Select date for daily view
+  async selectDate(day: number) {
     if (day === 0) return;
 
+    // Close calendar immediately
+    this.showCalendar = false;
+    
     // Create date using local time (no timezone shift)
     const selected = new Date(this.currentYear, this.currentMonth, day);
     
     // Manually format to YYYY-MM-DD to avoid any ISO timezone issues
-    this.selectedDate = 
+    const newDate = 
       selected.getFullYear() + '-' +
       String(selected.getMonth() + 1).padStart(2, '0') + '-' +
       String(selected.getDate()).padStart(2, '0');
 
-    this.showCalendar = false;
-    
-    // Keep calendar on correct month
-    this.currentMonth = selected.getMonth();
-    this.currentYear = selected.getFullYear();
-    this.generateCalendar();
+    // Only load data if date changed
+    if (this.selectedDate !== newDate) {
+      this.selectedDate = newDate;
+      this.viewMode = 'daily';
+      
+      // Keep calendar on correct month
+      this.currentMonth = selected.getMonth();
+      this.currentYear = selected.getFullYear();
+      this.generateCalendar();
 
-    this.onDateChange();
+      await this.onDateChange();
+    }
+    
+    this.cdr.detectChanges();
+  }
+
+  // Show monthly view
+  async showMonthlyView() {
+    this.showCalendar = false;
+    this.viewMode = 'monthly';
+    this.monthlySearchQuery = ''; // Reset search for monthly view
+    this.monthlyCurrentPage = 1; // Reset pagination for monthly view
+    
+    // Set loading state and then load data
+    this.isLoading = true;
+    this.cdr.detectChanges(); // Force UI update
+    
+    try {
+      await this.loadMonthlyData();
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // Switch back to daily view
+  switchToDailyView() {
+    this.viewMode = 'daily';
+    this.loadData();
     this.cdr.detectChanges();
   }
 
@@ -203,13 +311,16 @@ export class ProductionComponent implements OnInit {
            selected.getDate() === day;
   }
 
-  // Future dates fully allowed
-  isFutureDate(day: number): boolean {
-    return false;
+  hasProduction(day: number): boolean {
+    return this.productionByDay.has(day) && this.productionByDay.get(day)! > 0;
   }
 
-  // Quick date selection methods — also fixed with safe formatting
-  selectToday() {
+  getDayProduction(day: number): number {
+    return this.productionByDay.get(day) || 0;
+  }
+
+  // Quick date selection methods
+  async selectToday() {
     const today = new Date();
     this.selectedDate = today.getFullYear() + '-' +
       String(today.getMonth() + 1).padStart(2, '0') + '-' +
@@ -219,11 +330,17 @@ export class ProductionComponent implements OnInit {
     this.currentYear = today.getFullYear();
     this.generateCalendar();
     this.showCalendar = false;
-    this.onDateChange();
+    this.viewMode = 'daily';
+    
+    // Add small delay to ensure UI updates
+    setTimeout(() => {
+      this.onDateChange();
+    }, 10);
+    
     this.cdr.detectChanges();
   }
 
-  selectYesterday() {
+  async selectYesterday() {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     this.selectedDate = yesterday.getFullYear() + '-' +
@@ -234,11 +351,17 @@ export class ProductionComponent implements OnInit {
     this.currentYear = yesterday.getFullYear();
     this.generateCalendar();
     this.showCalendar = false;
-    this.onDateChange();
+    this.viewMode = 'daily';
+    
+    // Add small delay to ensure UI updates
+    setTimeout(() => {
+      this.onDateChange();
+    }, 10);
+    
     this.cdr.detectChanges();
   }
 
-  selectLastWeek() {
+  async selectLastWeek() {
     const lastWeek = new Date();
     lastWeek.setDate(lastWeek.getDate() - 7);
     this.selectedDate = lastWeek.getFullYear() + '-' +
@@ -249,7 +372,13 @@ export class ProductionComponent implements OnInit {
     this.currentYear = lastWeek.getFullYear();
     this.generateCalendar();
     this.showCalendar = false;
-    this.onDateChange();
+    this.viewMode = 'daily';
+    
+    // Add small delay to ensure UI updates
+    setTimeout(() => {
+      this.onDateChange();
+    }, 10);
+    
     this.cdr.detectChanges();
   }
 
@@ -265,7 +394,7 @@ export class ProductionComponent implements OnInit {
     }
   }
 
-  // Initialize available dates (last 30 days + today + next 7 days)
+  // Initialize available dates
   private initializeDates() {
     const dates: string[] = [];
     const today = new Date();
@@ -287,58 +416,63 @@ export class ProductionComponent implements OnInit {
     this.availableDates = [...new Set(dates)].sort((a, b) => b.localeCompare(a));
   }
 
-  // Load data for selected date
+  // Auto-save setup with debounce (shorter delay)
+  private setupAutoSave() {
+    this.autoSaveSubscription = this.saveSubject
+      .pipe(debounceTime(500)) // Reduced from 2000ms to 500ms for faster saving
+      .subscribe(() => {
+        this.autoSaveToDatabase();
+      });
+  }
+
+  private triggerAutoSave() {
+    this.saveSubject.next();
+  }
+
+  // Load data for selected date - FIXED: Always show all recipes
   async loadData() {
     this.isLoading = true;
     this.errorMessage = '';
     this.isDataLoadedFromStorage = false;
     
     try {
+      // Always get all recipes first
+      const recipes = (await this.supabase.getAllRecipesWithDetails()) || [];
+      
+      // Get saved data for this date
       const savedData = await this.loadSavedProductionData(this.selectedDate);
       
-      if (savedData && savedData.length > 0) {
-        this.entries = savedData;
-        this.showSnackbar(`Loaded saved production data for ${this.selectedDate}`, 'success');
-      } else {
-        const recipes = (await this.supabase.getAllRecipesWithDetails()) || [];
+      // Create entries for ALL recipes
+      this.entries = recipes.map(recipe => {
+        const recipeId = recipe.id || '';
         
-        this.entries = recipes.map(recipe => {
-          const productionRecipe: ProductionRecipe = {
-            id: recipe.id,
-            name: recipe.name,
-            std_yield: recipe.std_yield,
-            created_at: recipe.created_at,
-            skus: recipe.skus.map(sku => ({
-              ...sku,
-              actualOutput: 0,
-              variance: 0,
-              rawMatCost: 0,
-              remark: ''
-            })),
-            premixes: recipe.premixes.map(premix => ({
-              ...premix,
-              actualOutput: 0,
-              variance: 0,
-              rawMatCost: 0,
-              remark: ''
-            }))
+        // Find saved entry for this recipe
+        const savedEntry = savedData.find(entry => entry.recipe.id === recipeId);
+        
+        if (savedEntry) {
+          // Use saved data
+          return {
+            recipe: savedEntry.recipe,
+            orderKg: savedEntry.orderKg,
+            isExpanded: false
           };
+        } else {
+          // Create fresh entry
+          const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
           
           return {
             recipe: productionRecipe,
             orderKg: 0,
             isExpanded: false
           };
-        });
-        
-        const localStorageData = this.loadFromLocalStorage();
-        if (localStorageData && localStorageData.length > 0) {
-          this.entries = this.mergeLocalStorageData(this.entries, localStorageData);
-          this.isDataLoadedFromStorage = true;
-          this.showSnackbar(`Loaded unsaved changes for ${this.selectedDate}`, 'warning');
-        } else {
-          this.showSnackbar(`Starting fresh production for ${this.selectedDate}`, 'warning');
         }
+      });
+      
+      // Check if there's unsaved data in localStorage
+      const localStorageData = this.loadFromLocalStorage();
+      if (localStorageData && localStorageData.length > 0) {
+        this.entries = this.mergeLocalStorageData(this.entries, localStorageData);
+        this.isDataLoadedFromStorage = true;
       }
       
       this.filteredEntries = [...this.entries];
@@ -353,42 +487,359 @@ export class ProductionComponent implements OnInit {
     }
   }
 
+  // Load monthly data with aggregated SKU values - FIXED VERSION
+  async loadMonthlyData() {
+    this.isLoading = true;
+    this.errorMessage = '';
+    
+    try {
+      // Get start and end dates for current month
+      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
+      
+      console.log(`Loading monthly data from ${startDate} to ${endDate}`);
+      
+      // Get all recipes
+      const recipes = (await this.supabase.getAllRecipesWithDetails()) || [];
+      console.log(`Found ${recipes.length} recipes`);
+      
+      // Get all production logs for the month
+      const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
+      console.log(`Found ${monthlyData.length} production logs for the month`);
+      
+      if (monthlyData.length === 0) {
+        console.log('No production data found for this month');
+        // Create empty monthly entries for all recipes
+        this.monthlyEntries = recipes.map(recipe => {
+          const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
+          return {
+            recipe: productionRecipe,
+            orderKg: 0,
+            isExpanded: false,
+            daysWithOrders: 0,
+            totalActualOutput: 0,
+            totalRawMatCost: 0,
+            skus: productionRecipe.skus.map(sku => ({...sku, actualOutput: 0, rawMatCost: 0})),
+            premixes: productionRecipe.premixes.map(premix => ({...premix, actualOutput: 0, rawMatCost: 0}))
+          };
+        });
+      } else {
+        // Log sample data to debug
+        console.log('Sample logs:', monthlyData.slice(0, 3));
+        
+        // Create a map to aggregate data by recipe
+        const recipeAggregation = new Map<string, {
+          totalOrder: number,
+          days: Set<string>,
+          skus: Map<string, {
+            name: string,
+            type: string,
+            quantity1b: number,
+            quantityhalfb: number,
+            quantityquarterb: number,
+            totalActualOutput: number,
+            totalRawMatCost: number
+          }>,
+          premixes: Map<string, {
+            name: string,
+            type: string,
+            quantity1b: number,
+            quantityhalfb: number,
+            quantityquarterb: number,
+            totalActualOutput: number,
+            totalRawMatCost: number
+          }>
+        }>();
+        
+        // Process all logs and aggregate data
+        monthlyData.forEach(log => {
+          const recipeId = log.recipe_id;
+          
+          if (!recipeId) {
+            console.warn('Log missing recipe_id:', log);
+            return;
+          }
+          
+          if (!recipeAggregation.has(recipeId)) {
+            recipeAggregation.set(recipeId, {
+              totalOrder: 0,
+              days: new Set(),
+              skus: new Map(),
+              premixes: new Map()
+            });
+          }
+          
+          const recipeData = recipeAggregation.get(recipeId)!;
+          
+          // Add order if it exists - DEBUG LOGGING
+          if (log.order_kg && log.order_kg > 0) {
+            console.log(`Adding order ${log.order_kg} for recipe ${recipeId} on date ${log.date}`);
+            recipeData.totalOrder += log.order_kg;
+            recipeData.days.add(log.date);
+          }
+          
+          // Aggregate SKU/premix data
+          const itemName = log.item_name;
+          const itemType = log.type;
+          
+          if (!itemName || !itemType) {
+            console.warn('Log missing item_name or type:', log);
+            return;
+          }
+          
+          const itemMap = itemType === 'sku' ? recipeData.skus : recipeData.premixes;
+          
+          if (!itemMap.has(itemName)) {
+            // For monthly view, we don't have quantity data in logs, so we'll get it from recipes later
+            itemMap.set(itemName, {
+              name: itemName,
+              type: itemType,
+              quantity1b: 0,
+              quantityhalfb: 0,
+              quantityquarterb: 0,
+              totalActualOutput: 0,
+              totalRawMatCost: 0
+            });
+          }
+          
+          const itemData = itemMap.get(itemName)!;
+          
+          // Sum up actual output and raw material cost
+          if (log.actual_output) {
+            itemData.totalActualOutput += log.actual_output;
+          }
+          
+          if (log.raw_cost) {
+            itemData.totalRawMatCost += log.raw_cost;
+          }
+        });
+        
+        console.log(`Aggregated data for ${recipeAggregation.size} recipes`);
+        
+        // Create monthly entries for ALL recipes with aggregated data
+        this.monthlyEntries = recipes.map(recipe => {
+          const recipeId = recipe.id || '';
+          const recipeData = recipeAggregation.get(recipeId);
+          
+          // Convert base recipe
+          const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
+          
+          // Get quantity data from recipe for each SKU/premix
+          const aggregatedSkus: ProductionSku[] = productionRecipe.skus.map(sku => {
+            const aggregatedData = recipeData?.skus.get(sku.name);
+            return {
+              ...sku,
+              actualOutput: aggregatedData?.totalActualOutput || 0,
+              rawMatCost: aggregatedData?.totalRawMatCost || 0,
+              // For monthly view, variance is not applicable
+              variance: 0,
+              remark: aggregatedData ? `${recipeData?.days.size || 0} day(s) with production` : 'No production'
+            };
+          });
+          
+          const aggregatedPremixes: ProductionSku[] = productionRecipe.premixes.map(premix => {
+            const aggregatedData = recipeData?.premixes.get(premix.name);
+            return {
+              ...premix,
+              actualOutput: aggregatedData?.totalActualOutput || 0,
+              rawMatCost: aggregatedData?.totalRawMatCost || 0,
+              // For monthly view, variance is not applicable
+              variance: 0,
+              remark: aggregatedData ? `${recipeData?.days.size || 0} day(s) with production` : 'No production'
+            };
+          });
+          
+          // Calculate totals
+          const totalActualOutput = aggregatedSkus.reduce((sum, sku) => sum + sku.actualOutput, 0) +
+                                   aggregatedPremixes.reduce((sum, premix) => sum + premix.actualOutput, 0);
+          
+          const totalRawMatCost = aggregatedSkus.reduce((sum, sku) => sum + sku.rawMatCost, 0) +
+                                 aggregatedPremixes.reduce((sum, premix) => sum + premix.rawMatCost, 0);
+          
+          return {
+            recipe: {
+              ...productionRecipe,
+              skus: aggregatedSkus,
+              premixes: aggregatedPremixes
+            },
+            orderKg: recipeData?.totalOrder || 0,
+            isExpanded: false,
+            daysWithOrders: recipeData?.days.size || 0,
+            totalActualOutput,
+            totalRawMatCost,
+            skus: aggregatedSkus,
+            premixes: aggregatedPremixes
+          };
+        });
+      }
+      
+      // Calculate monthly total
+      this.monthlyTotal = this.monthlyEntries.reduce((sum, entry) => sum + entry.orderKg, 0);
+      console.log(`Monthly total: ${this.monthlyTotal} batches`);
+      
+      // Filter monthly entries
+      this.filteredMonthlyEntries = [...this.monthlyEntries];
+      
+      // Mark days with production for calendar
+      this.markProductionDays(monthlyData);
+      
+      // DEBUG: Check what's in the database
+      await this.debugCheckData();
+      
+    } catch (error: any) {
+      console.error('Failed to load monthly data:', error);
+      this.errorMessage = 'Failed to load monthly production data. Please try again.';
+      this.showSnackbar('Failed to load monthly data', 'error');
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
   // Load saved production data from database
   private async loadSavedProductionData(date: string): Promise<ProductionEntry[]> {
     try {
-      const logs = await this.supabase.getProductionLogs(date);
+      // Get logs for this specific date
+      const logs = await this.supabase.getProductionLogsByDate(date);
       
       if (!logs || logs.length === 0) {
         return [];
       }
+
+      // Get all recipes to ensure we have all data
+      const recipes = (await this.supabase.getAllRecipesWithDetails()) || [];
       
-      const recipesMap = new Map<string, any>();
+      // Group logs by recipe
+      const logsByRecipe = new Map<string, any[]>();
+      const orderByRecipe = new Map<string, number>();
       
       logs.forEach((log: any) => {
-        if (!recipesMap.has(log.recipe_id)) {
-          recipesMap.set(log.recipe_id, {
-            recipe: {
-              id: log.recipe_id,
-              name: log.recipe_name || 'Unknown Recipe',
-              std_yield: 0,
-              skus: [],
-              premixes: []
-            },
-            orderKg: log.order_kg || 0
+        const recipeId = log.recipe_id;
+        
+        // Store order quantity per recipe (use the largest order value)
+        if (log.order_kg && log.order_kg > (orderByRecipe.get(recipeId) || 0)) {
+          orderByRecipe.set(recipeId, log.order_kg);
+        }
+        
+        // Group logs by recipe
+        if (!logsByRecipe.has(recipeId)) {
+          logsByRecipe.set(recipeId, []);
+        }
+        logsByRecipe.get(recipeId)!.push(log);
+      });
+
+      // Create entries for recipes that have logs
+      const entries: ProductionEntry[] = [];
+      
+      for (const recipe of recipes) {
+        const recipeId = recipe.id || '';
+        const recipeLogs = logsByRecipe.get(recipeId);
+        
+        if (recipeLogs && recipeLogs.length > 0) {
+          // Create production recipe with saved data
+          const productionRecipe: ProductionRecipe = {
+            id: recipe.id,
+            name: recipe.name,
+            std_yield: recipe.std_yield,
+            created_at: recipe.created_at,
+            skus: recipe.skus.map(sku => {
+              // Find matching log for this SKU
+              const log = recipeLogs.find(l => 
+                l.item_name === sku.name && 
+                l.type === 'sku'
+              );
+              
+              return {
+                ...convertRecipeItemToProductionSku(sku),
+                actualOutput: log?.actual_output || 0,
+                variance: log?.variance || 0,
+                rawMatCost: log?.raw_cost || 0,
+                remark: log?.remark || ''
+              };
+            }),
+            premixes: recipe.premixes.map(premix => {
+              // Find matching log for this premix
+              const log = recipeLogs.find(l => 
+                l.item_name === premix.name && 
+                l.type === 'premix'
+              );
+              
+              return {
+                ...convertRecipeItemToProductionSku(premix),
+                actualOutput: log?.actual_output || 0,
+                variance: log?.variance || 0,
+                rawMatCost: log?.raw_cost || 0,
+                remark: log?.remark || ''
+              };
+            })
+          };
+          
+          entries.push({
+            recipe: productionRecipe,
+            orderKg: orderByRecipe.get(recipeId) || 0,
+            isExpanded: false
           });
         }
-      });
+      }
       
-      return Array.from(recipesMap.values()).map((item: any) => ({
-        recipe: item.recipe,
-        orderKg: item.orderKg,
-        isExpanded: false
-      }));
+      return entries;
       
     } catch (error) {
       console.error('Error loading saved production data:', error);
       return [];
     }
+  }
+
+  // Monthly total functions
+  async loadMonthlyTotal() {
+    try {
+      // Get start and end dates for current month
+      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
+      
+      // Get ALL monthly data
+      const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
+      
+      // Calculate total orders for the month
+      const uniqueOrders = new Set<string>();
+      let totalOrders = 0;
+      
+      monthlyData.forEach(log => {
+        if (log.order_kg && log.order_kg > 0) {
+          const uniqueKey = `${log.date}_${log.recipe_id}`;
+          if (!uniqueOrders.has(uniqueKey)) {
+            uniqueOrders.add(uniqueKey);
+            totalOrders += log.order_kg;
+          }
+        }
+      });
+      
+      this.monthlyTotal = totalOrders;
+      
+      // Mark days with production
+      this.markProductionDays(monthlyData);
+      
+    } catch (error) {
+      console.error('Error loading monthly total:', error);
+      this.monthlyTotal = 0;
+      this.productionByDay.clear();
+    }
+  }
+
+  markProductionDays(logs: any[]) {
+    this.productionByDay.clear();
+    
+    logs.forEach(log => {
+      if (log.order_kg && log.order_kg > 0) {
+        const date = new Date(log.date);
+        if (date.getMonth() === this.currentMonth && date.getFullYear() === this.currentYear) {
+          const day = date.getDate();
+          // Store the total order amount for that day
+          const currentTotal = this.productionByDay.get(day) || 0;
+          this.productionByDay.set(day, currentTotal + log.order_kg);
+        }
+      }
+    });
   }
 
   private loadFromLocalStorage(): ProductionEntry[] | null {
@@ -422,19 +873,34 @@ export class ProductionComponent implements OnInit {
     savedData.forEach(savedEntry => {
       const freshIndex = mergedData.findIndex(fresh => fresh.recipe.id === savedEntry.recipe.id);
       if (freshIndex !== -1) {
-        mergedData[freshIndex].orderKg = savedEntry.orderKg;
+        // Merge orderKg
+        mergedData[freshIndex].orderKg = savedEntry.orderKg || 0;
         
-        mergedData[freshIndex].recipe.skus.forEach((sku, skuIndex) => {
-          const savedSku = savedEntry.recipe.skus.find(s => s.name === sku.name);
-          if (savedSku) {
-            mergedData[freshIndex].recipe.skus[skuIndex] = { ...sku, ...savedSku };
+        // Merge SKUs
+        savedEntry.recipe.skus.forEach(savedSku => {
+          const skuIndex = mergedData[freshIndex].recipe.skus.findIndex(s => s.name === savedSku.name);
+          if (skuIndex !== -1) {
+            mergedData[freshIndex].recipe.skus[skuIndex] = {
+              ...mergedData[freshIndex].recipe.skus[skuIndex],
+              actualOutput: savedSku.actualOutput || 0,
+              variance: savedSku.variance || 0,
+              rawMatCost: savedSku.rawMatCost || 0,
+              remark: savedSku.remark || ''
+            };
           }
         });
         
-        mergedData[freshIndex].recipe.premixes.forEach((premix, premixIndex) => {
-          const savedPremix = savedEntry.recipe.premixes.find(p => p.name === premix.name);
-          if (savedPremix) {
-            mergedData[freshIndex].recipe.premixes[premixIndex] = { ...premix, ...savedPremix };
+        // Merge Premixes
+        savedEntry.recipe.premixes.forEach(savedPremix => {
+          const premixIndex = mergedData[freshIndex].recipe.premixes.findIndex(p => p.name === savedPremix.name);
+          if (premixIndex !== -1) {
+            mergedData[freshIndex].recipe.premixes[premixIndex] = {
+              ...mergedData[freshIndex].recipe.premixes[premixIndex],
+              actualOutput: savedPremix.actualOutput || 0,
+              variance: savedPremix.variance || 0,
+              rawMatCost: savedPremix.rawMatCost || 0,
+              remark: savedPremix.remark || ''
+            };
           }
         });
       }
@@ -447,71 +913,219 @@ export class ProductionComponent implements OnInit {
     return (orderKg || 0) * (quantity1b || 0);
   }
 
-  getTotalSkus(entry: ProductionEntry): number {
+  // Get total SKUs for any entry type (ProductionEntry or MonthlyEntry)
+  getTotalSkus(entry: ProductionEntry | MonthlyEntry): number {
     return entry.recipe.skus.length + entry.recipe.premixes.length;
   }
 
-  getAllItems(entry: ProductionEntry): ProductionSku[] {
+  getAllItems(entry: ProductionEntry | MonthlyEntry): ProductionSku[] {
     return [...entry.recipe.skus, ...entry.recipe.premixes];
   }
 
-toggleRecipe(entry: ProductionEntry) {
-  entry.isExpanded = !entry.isExpanded;
-  this.cdr.detectChanges();
-}
+  toggleRecipe(entry: ProductionEntry | MonthlyEntry) {
+    entry.isExpanded = !entry.isExpanded;
+    this.cdr.detectChanges();
+  }
 
+  // Save immediately when order changes
   recalculate(entry: ProductionEntry) {
     entry.orderKg = Number(entry.orderKg) || 0;
     this.saveToLocalStorage();
+    // Save to database immediately
+    this.saveEntryToDatabase(entry);
     this.cdr.detectChanges();
   }
 
+  // Save immediately when item changes
   onItemChange(entry: ProductionEntry) {
     this.saveToLocalStorage();
+    // Save to database immediately
+    this.saveEntryToDatabase(entry);
     this.cdr.detectChanges();
   }
 
-  onDateChange() {
-    this.currentPage = 1;
-    this.searchQuery = '';
-    this.loadData();
+  // Save a single entry to database immediately - WITH BETTER DEBUGGING
+  private async saveEntryToDatabase(entry: ProductionEntry) {
+    try {
+      if (!this.selectedDate) {
+        throw new Error('No date selected');
+      }
+      
+      const recipeId = entry.recipe.id || '';
+      const orderKg = entry.orderKg || 0;
+      
+      if (!recipeId) {
+        throw new Error('Recipe ID is missing');
+      }
+      
+      console.log(`=== SAVING ENTRY TO DATABASE ===`);
+      console.log(`Date: ${this.selectedDate}`);
+      console.log(`Recipe: ${entry.recipe.name} (ID: ${recipeId})`);
+      console.log(`Order: ${orderKg} batches`);
+      console.log(`SKUs: ${entry.recipe.skus.length}, Premixes: ${entry.recipe.premixes.length}`);
+      
+      // Prepare all logs to save
+      const logsToSave: ProductionLog[] = [];
+      
+      // Prepare SKU logs
+      entry.recipe.skus.forEach(sku => {
+        const rawUsed = this.calculateActualRawMat(orderKg, sku.quantity1b);
+        const log: ProductionLog = {
+          date: this.selectedDate,
+          recipe_id: recipeId,
+          recipe_name: entry.recipe.name,
+          order_kg: orderKg,
+          batches: 1,
+          actual_output: sku.actualOutput || 0,
+          raw_used: rawUsed,
+          raw_cost: sku.rawMatCost || 0,
+          remark: sku.remark || '',
+          type: 'sku',
+          item_name: sku.name
+        };
+        logsToSave.push(log);
+        console.log(`SKU ${sku.name}:`, {
+          actual_output: log.actual_output,
+          raw_used: log.raw_used,
+          raw_cost: log.raw_cost
+        });
+      });
+      
+      // Prepare Premix logs
+      entry.recipe.premixes.forEach(premix => {
+        const rawUsed = this.calculateActualRawMat(orderKg, premix.quantity1b);
+        const log: ProductionLog = {
+          date: this.selectedDate,
+          recipe_id: recipeId,
+          recipe_name: entry.recipe.name,
+          order_kg: orderKg,
+          batches: 1,
+          actual_output: premix.actualOutput || 0,
+          raw_used: rawUsed,
+          raw_cost: premix.rawMatCost || 0,
+          remark: premix.remark || '',
+          type: 'premix',
+          item_name: premix.name
+        };
+        logsToSave.push(log);
+        console.log(`Premix ${premix.name}:`, {
+          actual_output: log.actual_output,
+          raw_used: log.raw_used,
+          raw_cost: log.raw_cost
+        });
+      });
+      
+      // Clear existing logs for this date first
+      console.log('Clearing existing logs...');
+      await this.supabase.deleteProductionLogsByDate(this.selectedDate);
+      
+      // Save all logs
+      console.log(`Saving ${logsToSave.length} logs to database...`);
+      let savedCount = 0;
+      for (const log of logsToSave) {
+        try {
+          const result = await this.supabase.saveProductionLog(log);
+          if (result) {
+            savedCount++;
+          }
+        } catch (error) {
+          console.error(`Failed to save log for ${log.item_name}:`, error);
+        }
+      }
+      
+      console.log(`Successfully saved ${savedCount}/${logsToSave.length} logs`);
+      
+      // Clear the unsaved flag
+      this.isDataLoadedFromStorage = false;
+      this.clearLocalStorage();
+      
+      // Show success message
+      if (savedCount > 0) {
+        this.showSnackbar(`Saved ${entry.recipe.name} for ${this.selectedDate}`, 'success');
+      }
+      
+      console.log(`=== END SAVING ===\n`);
+      
+    } catch (error: any) {
+      console.error('Error saving entry to database:', error);
+      this.showSnackbar(`Failed to save ${entry.recipe.name}: ${error.message}`, 'error');
+    }
   }
 
-  onManualDateChange() {
-    this.initializeDates();
-    if (!this.availableDates.includes(this.selectedDate)) {
-      this.availableDates.unshift(this.selectedDate);
+  async onDateChange() {
+    this.currentPage = 1;
+    this.searchQuery = '';
+    
+    // Set loading state
+    this.isLoading = true;
+    this.cdr.detectChanges(); // Force UI update
+    
+    try {
+      await this.loadData();
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
     }
   }
 
   getTotalOrder(): number {
-    return this.filteredEntries.reduce((sum, entry) => sum + (entry.orderKg || 0), 0);
+    if (this.viewMode === 'daily') {
+      return this.filteredEntries.reduce((sum, entry) => sum + (entry.orderKg || 0), 0);
+    } else {
+      return this.filteredMonthlyEntries.reduce((sum, entry) => sum + (entry.orderKg || 0), 0);
+    }
   }
 
   getTotalActualRawMat(): number {
-    let total = 0;
-    this.filteredEntries.forEach(entry => {
-      entry.recipe.skus.forEach(sku => {
-        total += this.calculateActualRawMat(entry.orderKg, sku.quantity1b);
+    if (this.viewMode === 'daily') {
+      let total = 0;
+      this.filteredEntries.forEach(entry => {
+        entry.recipe.skus.forEach(sku => {
+          total += this.calculateActualRawMat(entry.orderKg, sku.quantity1b);
+        });
+        entry.recipe.premixes.forEach(premix => {
+          total += this.calculateActualRawMat(entry.orderKg, premix.quantity1b);
+        });
       });
-      entry.recipe.premixes.forEach(premix => {
-        total += this.calculateActualRawMat(entry.orderKg, premix.quantity1b);
+      return total;
+    } else {
+      let total = 0;
+      this.filteredMonthlyEntries.forEach(entry => {
+        entry.recipe.skus.forEach(sku => {
+          total += this.calculateActualRawMat(entry.orderKg, sku.quantity1b);
+        });
+        entry.recipe.premixes.forEach(premix => {
+          total += this.calculateActualRawMat(entry.orderKg, premix.quantity1b);
+        });
       });
-    });
-    return total;
+      return total;
+    }
   }
 
   getTotalRawMatCost(): number {
-    let total = 0;
-    this.filteredEntries.forEach(entry => {
-      entry.recipe.skus.forEach(sku => {
-        total += (sku.rawMatCost || 0);
+    if (this.viewMode === 'daily') {
+      let total = 0;
+      this.filteredEntries.forEach(entry => {
+        entry.recipe.skus.forEach(sku => {
+          total += (sku.rawMatCost || 0);
+        });
+        entry.recipe.premixes.forEach(premix => {
+          total += (premix.rawMatCost || 0);
+        });
       });
-      entry.recipe.premixes.forEach(premix => {
-        total += (premix.rawMatCost || 0);
+      return total;
+    } else {
+      let total = 0;
+      this.filteredMonthlyEntries.forEach(entry => {
+        entry.recipe.skus.forEach(sku => {
+          total += (sku.rawMatCost || 0);
+        });
+        entry.recipe.premixes.forEach(premix => {
+          total += (premix.rawMatCost || 0);
+        });
       });
-    });
-    return total;
+      return total;
+    }
   }
 
   onSearch() {
@@ -526,6 +1140,21 @@ toggleRecipe(entry: ProductionEntry) {
       );
     }
     this.currentPage = 1;
+    this.cdr.detectChanges();
+  }
+
+  onMonthlySearch() {
+    const q = this.monthlySearchQuery.toLowerCase().trim();
+    if (!q) {
+      this.filteredMonthlyEntries = [...this.monthlyEntries];
+    } else {
+      this.filteredMonthlyEntries = this.monthlyEntries.filter(entry =>
+        entry.recipe.name.toLowerCase().includes(q) ||
+        entry.recipe.skus.some(sku => sku.name.toLowerCase().includes(q)) ||
+        entry.recipe.premixes.some(premix => premix.name.toLowerCase().includes(q))
+      );
+    }
+    this.monthlyCurrentPage = 1;
     this.cdr.detectChanges();
   }
 
@@ -552,98 +1181,168 @@ toggleRecipe(entry: ProductionEntry) {
     }
   }
 
-  openSaveModal() {
-    this.showSaveModal = true;
-    this.productionDate = this.selectedDate;
-    this.batchName = '';
-    this.cdr.detectChanges();
-  }
-
-  closeSaveModal() {
-    this.showSaveModal = false;
-    this.showCalendar = false;
-    this.cdr.detectChanges();
-  }
-
-  async saveAllProduction() {
-    const hasOrders = this.filteredEntries.some(entry => entry.orderKg > 0);
-    if (!hasOrders) {
-      this.showSnackbar('Please enter order quantities before saving', 'warning');
-      return;
-    }
-    
-    this.openSaveModal();
-  }
-
-  async confirmSave() {
-    if (!this.selectedDate) {
-      this.showSnackbar('Please select a production date', 'warning');
-      return;
-    }
-
-    this.isLoading = true;
-    try {
-      let savedCount = 0;
-      await this.clearExistingLogs(this.selectedDate);
-      
-      for (const entry of this.filteredEntries) {
-        if (entry.orderKg > 0) {
-          for (const sku of entry.recipe.skus) {
-            try {
-              const log: ProductionLog = {
-                date: this.selectedDate,
-                recipe_id: entry.recipe.id || '',
-                batches: 1,
-                actual_output: sku.actualOutput || 0,
-                raw_used: this.calculateActualRawMat(entry.orderKg, sku.quantity1b),
-                raw_cost: sku.rawMatCost || 0
-              };
-              
-              await this.supabase.saveProductionLog(log);
-              savedCount++;
-            } catch (error) {
-              console.error('Error saving SKU:', error);
-            }
-          }
-          
-          for (const premix of entry.recipe.premixes) {
-            try {
-              const log: ProductionLog = {
-                date: this.selectedDate,
-                recipe_id: entry.recipe.id || '',
-                batches: 1,
-                actual_output: premix.actualOutput || 0,
-                raw_used: this.calculateActualRawMat(entry.orderKg, premix.quantity1b),
-                raw_cost: premix.rawMatCost || 0
-              };
-              
-              await this.supabase.saveProductionLog(log);
-              savedCount++;
-            } catch (error) {
-              console.error('Error saving premix:', error);
-            }
-          }
-        }
-      }
-
-      this.clearLocalStorage();
-      this.isDataLoadedFromStorage = false;
-      
-      this.closeSaveModal();
-      this.showSnackbar(`Saved ${savedCount} production items for ${this.selectedDate}`, 'success');
-      
-    } catch (error: any) {
-      console.error('Error saving production:', error);
-      this.showSnackbar(`Failed to save: ${error.message || 'Unknown error'}`, 'error');
-    } finally {
-      this.isLoading = false;
+  nextMonthlyPage() {
+    if (this.monthlyCurrentPage < this.monthlyTotalPages) {
+      this.monthlyCurrentPage++;
       this.cdr.detectChanges();
     }
   }
 
+  prevMonthlyPage() {
+    if (this.monthlyCurrentPage > 1) {
+      this.monthlyCurrentPage--;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // View recipe details in monthly view
+  viewRecipeDetails(entry: MonthlyEntry) {
+    // You can implement a detailed view modal here
+    this.showSnackbar(`Viewing details for ${entry.recipe.name}`, 'info');
+  }
+
+  // Debug method to check database contents
+  async debugCheckData() {
+    try {
+      console.log('=== DEBUG: Checking database data ===');
+      console.log(`Current month: ${this.currentMonth + 1} (${this.getMonthName(this.currentMonth)}) ${this.currentYear}`);
+      
+      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
+      
+      console.log(`Date range: ${startDate} to ${endDate}`);
+      
+      const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
+      console.log(`Total logs in database for this month: ${monthlyData.length}`);
+      
+      if (monthlyData.length > 0) {
+        console.log('Sample logs:');
+        monthlyData.slice(0, 5).forEach((log, i) => {
+          console.log(`Log ${i + 1}:`, {
+            date: log.date,
+            recipe_id: log.recipe_id,
+            recipe_name: log.recipe_name,
+            order_kg: log.order_kg,
+            type: log.type,
+            item_name: log.item_name,
+            actual_output: log.actual_output,
+            raw_cost: log.raw_cost
+          });
+        });
+        
+        // Group by recipe
+        const byRecipe = new Map();
+        monthlyData.forEach(log => {
+          const recipeId = log.recipe_id;
+          if (!byRecipe.has(recipeId)) {
+            byRecipe.set(recipeId, {
+              name: log.recipe_name,
+              totalOrder: 0,
+              logs: []
+            });
+          }
+          const data = byRecipe.get(recipeId);
+          if (log.order_kg) data.totalOrder += log.order_kg;
+          data.logs.push(log);
+        });
+        
+        console.log('Data by recipe:');
+        byRecipe.forEach((data, recipeId) => {
+          console.log(`Recipe ${recipeId} (${data.name}): ${data.totalOrder} total order, ${data.logs.length} logs`);
+        });
+      }
+      
+      console.log('=== END DEBUG ===');
+      
+    } catch (error) {
+      console.error('Debug check error:', error);
+    }
+  }
+
+  // Auto-save methods with immediate save
+  private async autoSaveToDatabase() {
+    try {
+      const savedCount = await this.saveAllEntriesToDatabase();
+      this.isDataLoadedFromStorage = false;
+      this.clearLocalStorage();
+      // Don't show snackbar for auto-save to avoid distraction
+    } catch (error: any) {
+      console.error('Auto-save failed:', error);
+      // Don't show error snackbar for auto-save to avoid annoying the user
+    }
+  }
+
+  // Save ALL entries to database (for auto-save)
+  private async saveAllEntriesToDatabase(): Promise<number> {
+    if (!this.selectedDate) {
+      throw new Error('No date selected');
+    }
+    
+    let savedCount = 0;
+    
+    // Clear existing logs for this date
+    await this.clearExistingLogs(this.selectedDate);
+    
+    for (const entry of this.filteredEntries) {
+      // Save even if orderKg is 0, to clear previous data
+      const recipeId = entry.recipe.id || '';
+      const orderKg = entry.orderKg || 0;
+      
+      // Save SKUs
+      for (const sku of entry.recipe.skus) {
+        try {
+          const log: ProductionLog = {
+            date: this.selectedDate,
+            recipe_id: recipeId,
+            recipe_name: entry.recipe.name,
+            order_kg: orderKg,
+            batches: 1,
+            actual_output: sku.actualOutput || 0,
+            raw_used: this.calculateActualRawMat(orderKg, sku.quantity1b),
+            raw_cost: sku.rawMatCost || 0,
+            remark: sku.remark || '',
+            type: 'sku',
+            item_name: sku.name
+          };
+          
+          await this.supabase.saveProductionLog(log);
+          savedCount++;
+        } catch (error) {
+          console.error('Error saving SKU:', error);
+        }
+      }
+      
+      // Save Premixes
+      for (const premix of entry.recipe.premixes) {
+        try {
+          const log: ProductionLog = {
+            date: this.selectedDate,
+            recipe_id: recipeId,
+            recipe_name: entry.recipe.name,
+            order_kg: orderKg,
+            batches: 1,
+            actual_output: premix.actualOutput || 0,
+            raw_used: this.calculateActualRawMat(orderKg, premix.quantity1b),
+            raw_cost: premix.rawMatCost || 0,
+            remark: premix.remark || '',
+            type: 'premix',
+            item_name: premix.name
+          };
+          
+          await this.supabase.saveProductionLog(log);
+          savedCount++;
+        } catch (error) {
+          console.error('Error saving premix:', error);
+        }
+      }
+    }
+    
+    return savedCount;
+  }
+
   private async clearExistingLogs(date: string): Promise<boolean> {
     try {
-      return true;
+      return await this.supabase.deleteProductionLogsByDate(date);
     } catch (error) {
       console.error('Error clearing existing logs:', error);
       return false;
@@ -753,11 +1452,107 @@ toggleRecipe(entry: ProductionEntry) {
     }
   }
 
-  showSnackbar(message: string, type: 'success' | 'error' | 'warning' = 'success') {
+  // Export monthly summary to Excel
+  exportMonthlySummary() {
+    try {
+      const exportData: any[] = [];
+      
+      exportData.push({
+        'Month': `${this.getMonthName(this.currentMonth)} ${this.currentYear}`,
+        'Total Orders': this.monthlyTotal,
+        'Exported On': new Date().toISOString().split('T')[0]
+      });
+      
+      exportData.push({});
+
+      this.filteredMonthlyEntries.forEach(entry => {
+        if (entry.orderKg > 0) {
+          exportData.push({
+            'Recipe': entry.recipe.name,
+            'Order (batch)': entry.orderKg,
+            'STD Yield (batch)': entry.recipe.std_yield || 0
+          });
+          
+          exportData.push({
+            'SKU / Raw Material': 'Item',
+            '1B': '1B',
+            '½B': '½B',
+            '¼B': '¼B',
+            'ACTUAL RAW MAT (batch)': 'ACTUAL RAW MAT (batch)',
+            'ACTUAL OUTPUT (batch)': 'ACTUAL OUTPUT (batch)',
+            'VARIANCE (batch)': 'VARIANCE (batch)',
+            'RAW MAT COST (₱)': 'RAW MAT COST (₱)',
+            'REMARK': 'REMARK'
+          });
+          
+          entry.recipe.skus.forEach(sku => {
+            exportData.push({
+              'SKU / Raw Material': sku.name + ' (SKU)',
+              '1B': sku.quantity1b,
+              '½B': sku.quantityhalfb,
+              '¼B': sku.quantityquarterb,
+              'ACTUAL RAW MAT (batch)': this.calculateActualRawMat(entry.orderKg, sku.quantity1b),
+              'ACTUAL OUTPUT (batch)': sku.actualOutput || 0,
+              'VARIANCE (batch)': 'N/A (Monthly Total)',
+              'RAW MAT COST (₱)': sku.rawMatCost || 0,
+              'REMARK': sku.remark || ''
+            });
+          });
+          
+          entry.recipe.premixes.forEach(premix => {
+            exportData.push({
+              'SKU / Raw Material': premix.name + ' (PRE-MIX)',
+              '1B': premix.quantity1b,
+              '½B': premix.quantityhalfb,
+              '¼B': premix.quantityquarterb,
+              'ACTUAL RAW MAT (batch)': this.calculateActualRawMat(entry.orderKg, premix.quantity1b),
+              'ACTUAL OUTPUT (batch)': premix.actualOutput || 0,
+              'VARIANCE (batch)': 'N/A (Monthly Total)',
+              'RAW MAT COST (₱)': premix.rawMatCost || 0,
+              'REMARK': premix.remark || ''
+            });
+          });
+          
+          exportData.push({
+            'SKU / Raw Material': '',
+            '1B': '',
+            '½B': '',
+            '¼B': '',
+            'ACTUAL RAW MAT (batch)': '',
+            'ACTUAL OUTPUT (batch)': '',
+            'VARIANCE (batch)': '',
+            'RAW MAT COST (₱)': '',
+            'REMARK': ''
+          });
+        }
+      });
+      
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      const wscols = [
+        { wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+        { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 25 }
+      ];
+      ws['!cols'] = wscols;
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Monthly_Summary_${this.currentYear}_${this.currentMonth + 1}`);
+      
+      const filename = `Monthly_Summary_${this.currentYear}_${this.currentMonth + 1}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      
+      this.showSnackbar(`Exported monthly summary to ${filename}`, 'success');
+    } catch (error) {
+      console.error('Export monthly summary error:', error);
+      this.showSnackbar('Failed to export monthly summary', 'error');
+    }
+  }
+
+  showSnackbar(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') {
     if (this.snackbarTimeout) clearTimeout(this.snackbarTimeout);
     this.snackbarMessage = message;
     this.snackbarType = type;
-    this.snackbarTimeout = setTimeout(() => this.hideSnackbar(), 4000);
+    this.snackbarTimeout = setTimeout(() => this.hideSnackbar(), 3000);
     this.cdr.detectChanges();
   }
 

@@ -83,6 +83,43 @@
   text-align: center;
 }
 
+/* Monthly Total Styling */
+.monthly-total {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 10px 16px;
+  margin: 8px 16px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.monthly-total-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monthly-total-amount {
+  font-weight: 600;
+  font-size: 14px;
+}
+
 /* Production Entries */
 .production-entries {
   display: flex;
@@ -279,12 +316,20 @@
   font-size: 0.8125rem;
 }
 
+/* Item Info */
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 /* Type Badges */
-.type-badge {
-  display: inline-block;
+.item-type {
+  font-size: 0.6875rem;
   padding: 0.125rem 0.375rem;
   border-radius: 3px;
-  font-size: 0.6875rem;
+  display: inline-block;
+  width: fit-content;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -437,6 +482,13 @@
   font-weight: 600;
   color: #111827;
   font-variant-numeric: tabular-nums;
+}
+
+/* Summary bar unsaved label */
+.summary-label.unsaved-label {
+  color: #ff9800;
+  font-weight: 500;
+  font-size: 0.75rem;
 }
 
 /* Pagination */
@@ -738,6 +790,235 @@
   box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
 }
 
+/* ────────────────────────────────
+   CALENDAR STYLES
+   ──────────────────────────────── */
+/* Container */
+.calendar-widget {
+  position: relative;
+  display: inline-block;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Input */
+.calendar-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 34px;
+  min-width: 135px;
+  background: #fff;
+  border: 1px solid #d5d5d5;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #1a1a1a;
+  cursor: pointer;
+  transition: all .16s ease;
+}
+
+.calendar-input:hover {
+  background: #fafafa;
+  border-color: #c9c9c9;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+.calendar-icon {
+  width: 15px;
+  height: 15px;
+  color: #6d6d6d;
+}
+
+/* Dropdown */
+.calendar-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 250px;
+  background: #fff;
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow:
+    0 4px 12px rgba(0,0,0,.06),
+    0 8px 24px rgba(0,0,0,.08);
+  z-index: 999;
+  font-size: 0.8rem;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+/* Header */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.calendar-month-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-month {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #131313;
+}
+
+.calendar-year {
+  font-size: 0.88rem;
+  color: #666;
+}
+
+.calendar-nav-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background .15s ease;
+}
+
+.calendar-nav-btn:hover {
+  background: #f4f4f4;
+}
+
+.calendar-nav-btn svg {
+  width: 13px;
+  height: 13px;
+  color: #202020;
+}
+
+/* Weekdays */
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #666;
+  letter-spacing: 0.3px;
+}
+
+.weekday {
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* Days Grid */
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  padding: 2px 0;
+}
+
+.day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 0.79rem;
+  font-weight: 500;
+  color: #222;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all .15s ease;
+}
+
+/* Subtle hover highlight */
+.day:hover:not(.empty) {
+  background: #f2f2f2;
+}
+
+/* Empty days (grayed) */
+.day.empty {
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+/* Today — subtle thin ring */
+.day.today {
+  border: 2px solid #111;
+  color: #111;
+  font-weight: 600;
+}
+
+/* Selected — filled dark circle */
+.day.selected {
+  background: #111 !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+/* Production Day Indicator */
+.day-production-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 8px;
+  color: #0066cc;
+  z-index: 1;
+}
+
+/* Days with production */
+.day.has-production {
+  background-color: #e8f4ff !important;
+  color: #0066cc !important;
+  font-weight: 600;
+}
+
+.day.has-production:hover {
+  background-color: #d4e7ff !important;
+}
+
+/* Selected days with production */
+.day.selected.has-production {
+  background: #111 !important;
+  color: #fff !important;
+}
+
+.day.selected .day-production-indicator {
+  color: #fff;
+  opacity: 0.8;
+}
+
+/* Quick Actions */
+.calendar-quick-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.quick-action-btn {
+  flex: 1;
+  padding: 6px 0;
+  background: #fff;
+  border: 1px solid #d5d5d5;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .16s ease;
+}
+
+.quick-action-btn:hover {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+/* Modal Version */
+.modal-calendar .calendar-input {
+  height: 36px;
+  font-size: 0.85rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .production {
@@ -821,266 +1102,137 @@
     font-size: 0.6875rem;
     padding: 0.125rem 0.25rem;
   }
+  
+  .monthly-total {
+    margin: 6px 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .monthly-total-amount {
+    font-size: 13px;
+  }
+  
+  .day-production-indicator {
+    font-size: 7px;
+    bottom: 1px;
+    right: 1px;
+  }
+  
+  .calendar-dropdown {
+    width: 280px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 }
 
-/* Item Info */
-.item-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.item-name {
-  font-weight: 500;
-  color: #111827;
-  font-size: 0.8125rem;
-}
-
-.item-type {
-  font-size: 0.6875rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-  display: inline-block;
-  width: fit-content;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.type-sku {
-  background: #dcfce7;
-  color: #166534;
-  border: 1px solid #bbf7d0;
-}
-
-.type-premix {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
-}
-
-/* ────────────────────────────────
-   FINAL: ULTRA CLEAN & PROFESSIONAL CALENDAR
-   Soft grays • Minimal • Perfectly balanced
-   ──────────────────────────────── */
-/* -----------------------
-    CONTAINER
------------------------- */
-.calendar-widget {
-  position: relative;
-  display: inline-block;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-}
-
-
-
-/* -----------------------
-        INPUT
------------------------- */
-.calendar-input {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  height: 34px;                 /* smaller */
-  min-width: 135px;
-
-  background: #fff;
-  border: 1px solid #d5d5d5;
-  border-radius: 6px;
-
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #1a1a1a;
-
-  cursor: pointer;
-  transition: all .16s ease;
-}
-
-.calendar-input:hover {
-  background: #fafafa;
-  border-color: #c9c9c9;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
-}
-
-.calendar-icon {
-  width: 15px;
-  height: 15px;
-  color: #6d6d6d;
-}
-
-
-
-/* -----------------------
-       DROPDOWN
------------------------- */
-.calendar-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 250px;                  /* smaller */
-
-  background: #fff;
-  border: 1px solid #e4e4e4;
-  border-radius: 10px;
-
-  padding: 12px;
-  box-shadow:
-    0 4px 12px rgba(0,0,0,.06),
-    0 8px 24px rgba(0,0,0,.08);
-
-  z-index: 999;
-  font-size: 0.8rem;
-}
-
-
-
-/* -----------------------
-         HEADER
------------------------- */
-.calendar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.calendar-header-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #131313;
-}
-
-.calendar-nav-btn {
-  padding: 4px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  border-radius: 5px;
-  transition: background .15s ease;
-}
-
-.calendar-nav-btn:hover {
-  background: #f4f4f4;
-}
-
-.calendar-nav-btn svg {
-  width: 13px;
-  height: 13px;
-  color: #202020;
-}
-
-
-
-/* -----------------------
-       WEEKDAYS
------------------------- */
-.calendar-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  margin-bottom: 4px;
-
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #666;
-  letter-spacing: 0.3px;
-}
-
-.weekday {
-  text-align: center;
-  padding: 4px 0;
-}
-
-
-
-/* -----------------------
-        DAYS GRID
------------------------- */
-.calendar-days {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-  padding: 2px 0;
-}
-
-.day {
-  aspect-ratio: 1;
+/* Monthly View Button in Calendar */
+.monthly-view-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-
-  font-size: 0.79rem;
-  font-weight: 500;
-  color: #222;
-
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  margin: 0.5rem;
   cursor: pointer;
-  border-radius: 50%;
-  transition: all .15s ease;
+  font-size: 0.875rem;
+  color: #374151;
+  transition: all 0.2s;
 }
 
-/* Subtle hover highlight */
-.day:hover:not(.empty) {
-  background: #f2f2f2;
+.monthly-view-btn:hover {
+  background-color: #e5e7eb;
+  border-color: #d1d5db;
 }
 
-/* Empty days (grayed) */
-.day.empty {
-  pointer-events: none;
-  opacity: 0.15;
+.monthly-view-btn svg {
+  color: #6b7280;
 }
 
-/* Today — subtle thin ring */
-.day.today {
-  border: 2px solid #111;
-  color: #111;
-  font-weight: 600;
-}
-
-/* Selected — filled dark circle (no blue) */
-.day.selected {
-  background: #111 !important;
-  color: #fff !important;
-  font-weight: 600;
-}
-
-
-
-/* -----------------------
-      QUICK ACTIONS
------------------------- */
-.calendar-quick-actions {
+/* View Mode Toggle */
+.view-mode-toggle {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
 }
 
-.quick-action-btn {
-  flex: 1;
-  padding: 6px 0;
+.view-mode-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+}
 
-  background: #fff;
-  border: 1px solid #d5d5d5;
-  border-radius: 6px;
+.view-mode-title p {
+  margin: 0.25rem 0 0 0;
+  color: #64748b;
+  font-size: 0.875rem;
+}
 
+/* Monthly Summary Container */
+.monthly-summary-container {
+  margin-top: 1rem;
+}
+
+.recipe-info-monthly {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.recipe-stats-monthly {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stat-badge-monthly {
   font-size: 0.75rem;
-  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  background-color: #f1f5f9;
+  color: #475569;
+  border-radius: 9999px;
+}
 
+/* Button Styles */
+.btn-small {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
   cursor: pointer;
-  transition: all .16s ease;
+  transition: background-color 0.2s;
 }
 
-.quick-action-btn:hover {
-  background: #111;
-  border-color: #111;
-  color: #fff;
+.btn-small:hover {
+  background-color: #2563eb;
 }
 
+/* Empty State for Monthly View */
+.empty-monthly-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+}
 
-
-/* -----------------------
-       MODAL VERSION
------------------------- */
-.modal-calendar .calendar-input {
-  height: 36px;
-  font-size: 0.85rem;
+/* Responsive Design */
+@media (max-width: 768px) {
+  .view-mode-toggle {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .view-mode-title h2 {
+    font-size: 1.125rem;
+  }
 }

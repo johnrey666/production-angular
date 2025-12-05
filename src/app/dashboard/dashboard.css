@@ -374,7 +374,7 @@
   
   .main-content.content-expanded .summary-section,
   .main-content.content-expanded .alerts-section,
-  .main-content.content-expanded .actions-section {
+  .main-content.content-expanded .actions-section { 
     padding: 1rem;
   }
 }

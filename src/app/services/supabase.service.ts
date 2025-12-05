@@ -18,10 +18,15 @@ export interface ProductionLog {
   id?: string;
   date: string;
   recipe_id: string;
+  recipe_name?: string; // Add this
+  order_kg?: number;    // Add this
   batches: number;
   actual_output: number;
   raw_used: number;
   raw_cost: number;
+  remark?: string;      // Add this
+  type?: 'sku' | 'premix'; // Add this for item type
+  item_name?: string;   // Add this for the SKU/premix name
   created_at?: string;
 }
 
@@ -387,11 +392,59 @@ export class SupabaseService {
     }
   }
 
-  async saveProductionLog(log: ProductionLog): Promise<ProductionLog[] | null> {
+  // Add this method - get logs for a specific date
+  async getProductionLogsByDate(date: string): Promise<any[]> {
     try {
       const { data, error } = await this.supabase
         .from('production_logs')
-        .insert([log])
+        .select(`
+          *,
+          recipes (name)
+        `)
+        .eq('date', date)
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        console.error('Supabase error in getProductionLogsByDate:', error);
+        return [];
+      }
+      
+      // Transform data to include recipe_name
+      return data?.map(log => ({
+        ...log,
+        recipe_name: log.recipes?.name || 'Unknown Recipe',
+        type: log.type || 'sku', // Default to sku if not specified
+        item_name: log.item_name || 'Unknown Item'
+      })) || [];
+      
+    } catch (error) {
+      console.error('Error in getProductionLogsByDate:', error);
+      return [];
+    }
+  }
+
+  async saveProductionLog(log: ProductionLog): Promise<ProductionLog[] | null> {
+    try {
+      // Prepare the log data, including optional fields
+      const logData: any = {
+        date: log.date,
+        recipe_id: log.recipe_id,
+        batches: log.batches,
+        actual_output: log.actual_output,
+        raw_used: log.raw_used,
+        raw_cost: log.raw_cost
+      };
+      
+      // Add optional fields if they exist
+      if (log.recipe_name) logData.recipe_name = log.recipe_name;
+      if (log.order_kg !== undefined) logData.order_kg = log.order_kg;
+      if (log.remark) logData.remark = log.remark;
+      if (log.type) logData.type = log.type;
+      if (log.item_name) logData.item_name = log.item_name;
+      
+      const { data, error } = await this.supabase
+        .from('production_logs')
+        .insert([logData])
         .select();
       
       if (error) {
@@ -402,6 +455,44 @@ export class SupabaseService {
     } catch (error) {
       console.error('Error in saveProductionLog:', error);
       return null;
+    }
+  }
+
+async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<any[]> {
+  try {
+    const { data, error } = await this.supabase
+      .from('production_logs')
+      .select('*')  // Select ALL fields
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      console.error('Supabase error in getProductionLogsByDateRange:', error);
+      return [];
+    }
+    return data || [];
+  } catch (error) {
+    console.error('Error in getProductionLogsByDateRange:', error);
+    return [];
+  }
+}
+
+  async deleteProductionLogsByDate(date: string): Promise<boolean> {
+    try {
+      const { error } = await this.supabase
+        .from('production_logs')
+        .delete()
+        .eq('date', date);
+      
+      if (error) {
+        console.error('Supabase error in deleteProductionLogsByDate:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error in deleteProductionLogsByDate:', error);
+      return false;
     }
   }
 
@@ -840,64 +931,66 @@ export class SupabaseService {
       return null;
     }
   }
-async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
-  try {
-    console.log('Fetching ALL recipes + items in ONE query...');
 
-    const { data, error } = await this.supabase
-      .from('recipes')
-      .select(`
-        id,
-        name,
-        std_yield,
-        batch_size,
-        yield_kg,
-        created_at,
-        recipe_items (
+  async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
+    try {
+      console.log('Fetching ALL recipes + items in ONE query...');
+
+      const { data, error } = await this.supabase
+        .from('recipes')
+        .select(`
           id,
           name,
-          type,
-          quantity1b,
-          quantityhalfb,
-          quantityquarterb
-        )
-      `)
-      .order('name');
+          std_yield,
+          batch_size,
+          yield_kg,
+          created_at,
+          recipe_items (
+            id,
+            name,
+            type,
+            quantity1b,
+            quantityhalfb,
+            quantityquarterb
+          )
+        `)
+        .order('name');
 
-    if (error) {
-      console.error('Supabase error:', error);
+      if (error) {
+        console.error('Supabase error:', error);
+        return [];
+      }
+
+      if (!data) {
+        console.log('No recipes found');
+        return [];
+      }
+
+      console.log(`Fetched ${data.length} recipes with nested items`);
+
+      const result: RecipeWithDetails[] = data.map((row: any) => {
+        const items = row.recipe_items || [];
+        return {
+          id: row.id,
+          name: row.name,
+          std_yield: row.std_yield,
+          batch_size: row.batch_size || 1,
+          yield_kg: row.yield_kg || 0,
+          created_at: row.created_at,
+          skus: items.filter((i: any) => i.type === 'sku'),
+          premixes: items.filter((i: any) => i.type === 'premix')
+        };
+      });
+
+      console.log(`Returning ${result.length} fully loaded recipes`);
+      return result;
+
+    } catch (err) {
+      console.error('Fatal error in getAllRecipesWithDetails:', err);
       return [];
     }
-
-    if (!data) {
-      console.log('No recipes found');
-      return [];
-    }
-
-    console.log(`Fetched ${data.length} recipes with nested items`);
-
-    const result: RecipeWithDetails[] = data.map((row: any) => {
-      const items = row.recipe_items || [];
-      return {
-        id: row.id,
-        name: row.name,
-        std_yield: row.std_yield,
-        batch_size: row.batch_size || 1,
-        yield_kg: row.yield_kg || 0,
-        created_at: row.created_at,
-        skus: items.filter((i: any) => i.type === 'sku'),
-        premixes: items.filter((i: any) => i.type === 'premix')
-      };
-    });
-
-    console.log(`Returning ${result.length} fully loaded recipes`);
-    return result;
-
-  } catch (err) {
-    console.error('Fatal error in getAllRecipesWithDetails:', err);
-    return [];
   }
-}
+
   async saveRecipeWithItems(recipe: RecipeWithDetails): Promise<RecipeWithDetails | null> {
     try {
       console.log('=== STARTING saveRecipeWithItems ===');
@@ -1053,7 +1146,7 @@ async getAllRecipesWithDetails(): Promise<RecipeWithDetails[]> {
     }
   }
 
-    // ===== BULK DELETE RECIPES =====
+  // ===== BULK DELETE RECIPES =====
   async deleteAllRecipes(): Promise<boolean> {
     try {
       console.log('Deleting ALL recipes and their items...');
