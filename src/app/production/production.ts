@@ -944,7 +944,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  // Save a single entry to database immediately - WITH BETTER DEBUGGING
+  // Save a single entry to database immediately - FIXED TO PRESERVE OTHER RECIPES
   private async saveEntryToDatabase(entry: ProductionEntry) {
     try {
       if (!this.selectedDate) {
@@ -984,11 +984,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
           item_name: sku.name
         };
         logsToSave.push(log);
-        console.log(`SKU ${sku.name}:`, {
-          actual_output: log.actual_output,
-          raw_used: log.raw_used,
-          raw_cost: log.raw_cost
-        });
       });
       
       // Prepare Premix logs
@@ -1008,19 +1003,14 @@ export class ProductionComponent implements OnInit, OnDestroy {
           item_name: premix.name
         };
         logsToSave.push(log);
-        console.log(`Premix ${premix.name}:`, {
-          actual_output: log.actual_output,
-          raw_used: log.raw_used,
-          raw_cost: log.raw_cost
-        });
       });
       
-      // Clear existing logs for this date first
-      console.log('Clearing existing logs...');
-      await this.supabase.deleteProductionLogsByDate(this.selectedDate);
+      // FIXED: Only delete logs for THIS recipe, not all recipes
+      console.log(`Deleting existing logs for recipe ${recipeId} on date ${this.selectedDate}...`);
+      await this.supabase.deleteProductionLogsByRecipeAndDate(recipeId, this.selectedDate);
       
       // Save all logs
-      console.log(`Saving ${logsToSave.length} logs to database...`);
+      console.log(`Saving ${logsToSave.length} logs for recipe ${recipeId}...`);
       let savedCount = 0;
       for (const log of logsToSave) {
         try {
@@ -1033,11 +1023,11 @@ export class ProductionComponent implements OnInit, OnDestroy {
         }
       }
       
-      console.log(`Successfully saved ${savedCount}/${logsToSave.length} logs`);
+      console.log(`Successfully saved ${savedCount}/${logsToSave.length} logs for recipe ${recipeId}`);
       
-      // Clear the unsaved flag
+      // Clear the unsaved flag only for this recipe
       this.isDataLoadedFromStorage = false;
-      this.clearLocalStorage();
+      this.clearLocalStorageForRecipe(recipeId);
       
       // Show success message
       if (savedCount > 0) {
@@ -1049,6 +1039,26 @@ export class ProductionComponent implements OnInit, OnDestroy {
     } catch (error: any) {
       console.error('Error saving entry to database:', error);
       this.showSnackbar(`Failed to save ${entry.recipe.name}: ${error.message}`, 'error');
+    }
+  }
+
+  // Add this new method to clear localStorage for a specific recipe
+  private clearLocalStorageForRecipe(recipeId: string) {
+    try {
+      const key = `production_${this.selectedDate}`;
+      const data = localStorage.getItem(key);
+      if (data) {
+        const entries: ProductionEntry[] = JSON.parse(data);
+        // Remove the specific recipe from localStorage
+        const filteredEntries = entries.filter(entry => entry.recipe.id !== recipeId);
+        if (filteredEntries.length > 0) {
+          localStorage.setItem(key, JSON.stringify(filteredEntries));
+        } else {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (error) {
+      console.error('Error clearing localStorage for recipe:', error);
     }
   }
 
@@ -1272,7 +1282,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Save ALL entries to database (for auto-save)
+  // Save ALL entries to database (for auto-save) - FIXED VERSION
   private async saveAllEntriesToDatabase(): Promise<number> {
     if (!this.selectedDate) {
       throw new Error('No date selected');
@@ -1280,13 +1290,15 @@ export class ProductionComponent implements OnInit, OnDestroy {
     
     let savedCount = 0;
     
-    // Clear existing logs for this date
-    await this.clearExistingLogs(this.selectedDate);
-    
+    // Process each recipe individually instead of clearing all logs
     for (const entry of this.filteredEntries) {
-      // Save even if orderKg is 0, to clear previous data
       const recipeId = entry.recipe.id || '';
       const orderKg = entry.orderKg || 0;
+      
+      if (!recipeId) continue;
+      
+      // Delete existing logs for this specific recipe and date only
+      await this.supabase.deleteProductionLogsByRecipeAndDate(recipeId, this.selectedDate);
       
       // Save SKUs
       for (const sku of entry.recipe.skus) {
@@ -1338,15 +1350,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
     }
     
     return savedCount;
-  }
-
-  private async clearExistingLogs(date: string): Promise<boolean> {
-    try {
-      return await this.supabase.deleteProductionLogsByDate(date);
-    } catch (error) {
-      console.error('Error clearing existing logs:', error);
-      return false;
-    }
   }
 
   private clearLocalStorage() {

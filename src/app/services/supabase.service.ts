@@ -1180,4 +1180,21 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
       return false;
     }
   }
+
+  // In your supabase.service.ts file, add this method:
+async deleteProductionLogsByRecipeAndDate(recipeId: string, date: string): Promise<boolean> {
+  try {
+    const { error } = await this.supabase
+      .from('production_logs')
+      .delete()
+      .eq('recipe_id', recipeId)
+      .eq('date', date);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error deleting production logs by recipe and date:', error);
+    return false;
+  }
+}
 }
