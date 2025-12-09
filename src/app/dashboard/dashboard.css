@@ -615,11 +615,6 @@
   color: #dc2626;
 }
 
-/* Responsive Sidebar Adjustments */
-.main-content:not(.content-expanded) {
-  /* Default - sidebar open */
-}
-
 .main-content.content-expanded {
   /* When sidebar collapsed */
   margin-left: 0;
@@ -801,7 +796,6 @@
 .table-container::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
 }
-/* Add to your existing CSS */
 
 /* More alerts indicator */
 .more-alerts {

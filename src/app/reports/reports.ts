@@ -128,8 +128,9 @@ export class ReportsComponent implements OnInit {
     'Others'
   ];
   
-  // Data management
-  allReportData: Map<string, ReportItem[]> = new Map();
+  // Data management - FIXED: Separate original data from filtered data
+  originalReportData: Map<string, ReportItem[]> = new Map(); // NEW: Stores ALL data from database
+  allReportData: Map<string, ReportItem[]> = new Map();      // Currently filtered data (by week)
   displayedData: ReportItem[] = [];
   aggregatedData: AggregatedItem[] = [];
   displayedAggregatedData: AggregatedItem[] = [];
@@ -249,7 +250,7 @@ export class ReportsComponent implements OnInit {
     if (item.type) this.currentProduct.type = item.type;
   }
 
-  // Initialize week with all SKUs (minimal implementation)
+  // Initialize week with all SKUs with progress loader
   async initializeWeekWithAllSkus() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -266,46 +267,94 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!confirm(`Initialize Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} for ${this.selectedStore} with all SKUs?`)) {
+    if (!confirm(`Initialize Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} for ${this.selectedStore} with all SKUs? This may take a moment.`)) {
       return;
     }
 
     this.isInitializing = true;
+    this.isLoading = true; // Also set main loading to disable UI
     this.loadingMessage = 'Initializing week with all SKUs...';
-    this.loadingProgress = '';
+    this.loadingProgress = '0%';
+    
     try {
-      // Minimal behavior: create local entries only (no heavy DB ops here)
+      // Create local entries and save to database
       const storeData = this.allReportData.get(this.selectedStore) || [];
-      for (const skuItem of this.skuCatalog) {
-        const exists = storeData.some(p => p.sku === skuItem.sku && p.weekStartDate === this.selectedWeek!.weekStartDate && p.weekEndDate === this.selectedWeek!.weekEndDate);
-        if (exists) continue;
-        const newItem: ReportItem = {
-          store: this.selectedStore,
-          sku: skuItem.sku,
-          description: skuItem.description,
-          type: skuItem.type || 'Finished Goods',
-          um: skuItem.um || 'pack',
-          price: skuItem.price || 0,
-          storeOrder: 0,
-          delivered: 0,
-          undelivered: 0,
-          fillRate: 0,
-          remarks: '',
-          weekStartDate: this.selectedWeek.weekStartDate,
-          weekEndDate: this.selectedWeek.weekEndDate,
-          weekNumber: this.selectedWeek.weekNumber,
-          year: this.selectedWeek.year
-        };
-        storeData.push(newItem);
+      const originalStoreData = this.originalReportData.get(this.selectedStore) || [];
+      
+      const totalSkus = this.skuCatalog.length;
+      let processedCount = 0;
+      let insertedCount = 0;
+      let skippedCount = 0;
+      
+      // Process SKUs in batches to avoid overwhelming the database
+      const batchSize = 10;
+      for (let i = 0; i < totalSkus; i += batchSize) {
+        const batch = this.skuCatalog.slice(i, i + batchSize);
+        
+        for (const skuItem of batch) {
+          processedCount++;
+          
+          // Update progress
+          const progressPercentage = Math.round((processedCount / totalSkus) * 100);
+          this.loadingProgress = `${progressPercentage}% (${processedCount}/${totalSkus})`;
+          this.cdr.detectChanges(); // Force UI update
+          
+          // Check if SKU already exists for this week
+          const exists = storeData.some(p => p.sku === skuItem.sku && p.weekStartDate === this.selectedWeek!.weekStartDate && p.weekEndDate === this.selectedWeek!.weekEndDate);
+          if (exists) {
+            skippedCount++;
+            continue;
+          }
+          
+          const newItem: ReportItem = {
+            store: this.selectedStore,
+            sku: skuItem.sku,
+            description: skuItem.description,
+            type: skuItem.type || 'Finished Goods',
+            um: skuItem.um || 'pack',
+            price: skuItem.price || 0,
+            storeOrder: 0,
+            delivered: 0,
+            undelivered: 0,
+            fillRate: 0,
+            remarks: '',
+            weekStartDate: this.selectedWeek.weekStartDate,
+            weekEndDate: this.selectedWeek.weekEndDate,
+            weekNumber: this.selectedWeek.weekNumber,
+            year: this.selectedWeek.year
+          };
+          
+          try {
+            // Save to database
+            const savedItem = await this.saveToDatabase(newItem);
+            if (savedItem) {
+              storeData.push(savedItem);
+              originalStoreData.push(savedItem);
+              insertedCount++;
+            }
+          } catch (error) {
+            console.error(`Error inserting SKU ${skuItem.sku}:`, error);
+            // Continue with next SKU even if one fails
+          }
+        }
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < totalSkus) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
+      
       this.allReportData.set(this.selectedStore, storeData);
-      this.showSnackbar('Week initialized locally with SKUs', 'success');
+      this.originalReportData.set(this.selectedStore, originalStoreData);
+      
+      this.showSnackbar(`Week initialized with ${insertedCount} SKUs (${skippedCount} already existed)`, 'success');
       this.loadStoreData();
     } catch (err) {
       console.error('Error initializing week:', err);
       this.showSnackbar('Failed to initialize week', 'error');
     } finally {
       this.isInitializing = false;
+      this.isLoading = false;
       this.loadingMessage = '';
       this.loadingProgress = '';
     }
@@ -473,7 +522,8 @@ export class ReportsComponent implements OnInit {
       
       if (data && data.length > 0) {
         // Clear existing data
-        this.allReportData.clear();
+        this.originalReportData.clear(); // NEW: Clear original data
+        this.allReportData.clear();      // Clear filtered data
         this.aggregatedData = [];
         this.displayedAggregatedData = [];
         
@@ -481,10 +531,11 @@ export class ReportsComponent implements OnInit {
           const localItem = this.fromDatabaseFormat(dbItem);
           const store = localItem.store;
           
-          if (!this.allReportData.has(store)) {
-            this.allReportData.set(store, []);
+          // Add to original data (all weeks)
+          if (!this.originalReportData.has(store)) {
+            this.originalReportData.set(store, []);
           }
-          this.allReportData.get(store)!.push(localItem);
+          this.originalReportData.get(store)!.push(localItem);
           
           // Add store to custom stores if it's not predefined
           if (!this.predefinedStores.includes(store) && !this.customStores.includes(store)) {
@@ -503,10 +554,10 @@ export class ReportsComponent implements OnInit {
         // Generate week options based on available data
         this.generateWeekOptions();
         
-        // Filter data for selected week
+        // Filter data for selected week (from original data)
         this.filterDataByWeek();
         
-        this.showSnackbar(`Loaded ${data.length} production items across ${this.allReportData.size} stores`, 'success');
+        this.showSnackbar(`Loaded ${data.length} production items across ${this.originalReportData.size} stores`, 'success');
         
       } else {
         this.showSnackbar('No production data found. Start by selecting a store and adding products.', 'info');
@@ -522,25 +573,31 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Filter data by selected week
+  // Filter data by selected week - FIXED: Now filters from original data
   filterDataByWeek() {
-    if (!this.selectedWeek) return;
-    
-    // Filter allReportData by week
-    const filteredData = new Map<string, ReportItem[]>();
-    
-    this.allReportData.forEach((storeItems, storeName) => {
-      const weekItems = storeItems.filter(item => 
-        item.weekStartDate === this.selectedWeek!.weekStartDate &&
-        item.weekEndDate === this.selectedWeek!.weekEndDate
-      );
+    if (!this.selectedWeek) {
+      // If no week selected, show all data from original
+      this.allReportData = new Map(this.originalReportData);
+    } else {
+      // Filter original data by week into allReportData
+      const filteredData = new Map<string, ReportItem[]>();
       
-      if (weekItems.length > 0) {
-        filteredData.set(storeName, weekItems);
-      }
-    });
-    
-    this.allReportData = filteredData;
+      this.originalReportData.forEach((storeItems, storeName) => {
+        const weekItems = storeItems.filter(item => 
+          item.weekStartDate === this.selectedWeek!.weekStartDate &&
+          item.weekEndDate === this.selectedWeek!.weekEndDate
+        );
+        
+        if (weekItems.length > 0) {
+          filteredData.set(storeName, weekItems);
+        } else {
+          // Keep store in map with empty array if no items for this week
+          filteredData.set(storeName, []);
+        }
+      });
+      
+      this.allReportData = filteredData;
+    }
     
     // Refresh view based on current selection
     if (this.selectedStore === 'All') {
@@ -552,7 +609,7 @@ export class ReportsComponent implements OnInit {
 
   onWeekChange(week: WeekOption) {
     this.selectedWeek = week;
-    this.filterDataByWeek();
+    this.filterDataByWeek(); // This now filters from original data
     this.showWeekSelector = false;
   }
 
@@ -678,7 +735,8 @@ export class ReportsComponent implements OnInit {
     this.selectedStore = storeName;
     this.newStoreName = '';
     
-    // Initialize empty data for new store
+    // Initialize empty data for new store in both maps
+    this.originalReportData.set(storeName, []);
     this.allReportData.set(storeName, []);
     
     this.showSnackbar(`Store "${storeName}" added successfully`, 'success');
@@ -749,18 +807,10 @@ export class ReportsComponent implements OnInit {
     try {
       const dbItem = this.toDatabaseFormat(item);
       
-      console.log('DEBUG: Attempting to save product:', {
-        store: dbItem.store,
-        sku: dbItem.sku,
-        weekStartDate: dbItem.week_start_date,
-        weekEndDate: dbItem.week_end_date
-      });
-      
       let result;
       
       if (item.id) {
         // Update existing
-        console.log('DEBUG: Updating existing product with ID:', item.id);
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .update(dbItem)
@@ -779,66 +829,27 @@ export class ReportsComponent implements OnInit {
         result = data;
       } else {
         // Insert new
-        console.log('DEBUG: Inserting new product with week columns');
-        
-        // First try direct insert with SELECT
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .insert([dbItem])
           .select();
         
         if (error) {
-          console.error('Insert error (with select):', {
+          console.error('Insert error:', {
             code: error.code,
             message: error.message,
             details: error.details
           });
-          
-          // If it's a schema cache error (PGRST204), retry without SELECT
-          if (error.code === 'PGRST204') {
-            console.log('DEBUG: Schema cache error detected, retrying without SELECT...');
-            
-            // Insert without expecting data back
-            const { error: insertError } = await this.supabase['supabase']
-              .from('production_reports')
-              .insert([dbItem]);
-            
-            if (insertError) {
-              console.error('Insert error (without select):', insertError);
-              throw insertError;
-            }
-            
-            // Then fetch the inserted record by unique combination
-            const { data: fetchedData, error: fetchError } = await this.supabase['supabase']
-              .from('production_reports')
-              .select()
-              .eq('store', dbItem.store)
-              .eq('sku', dbItem.sku)
-              .eq('week_start_date', dbItem.week_start_date)
-              .eq('week_end_date', dbItem.week_end_date)
-              .order('created_at', { ascending: false })
-              .limit(1);
-            
-            if (fetchError) {
-              console.error('Fetch error after insert:', fetchError);
-              throw fetchError;
-            }
-            
-            result = fetchedData;
-          } else {
-            throw error;
-          }
-        } else {
-          result = data;
+          throw error;
         }
+        
+        result = data;
       }
       
       if (result && result.length > 0) {
-        console.log('DEBUG: Save successful, returned:', result[0]);
         return this.fromDatabaseFormat(result[0]);
       }
       
-      console.warn('DEBUG: No data returned from save operation');
       return null;
       
     } catch (error: any) {
@@ -851,10 +862,13 @@ export class ReportsComponent implements OnInit {
           'warning'
         );
       } else if (error.code === '23505') { // Unique violation
-        this.showSnackbar(
-          `Product "${item.sku}" already exists for this store and week.`,
-          'error'
-        );
+        // Don't show error for duplicates during initialization
+        if (!this.isInitializing) {
+          this.showSnackbar(
+            `Product "${item.sku}" already exists for this store and week.`,
+            'error'
+          );
+        }
       } else if (error.code === '23502') { // Not null violation
         this.showSnackbar(
           'Database error: Required fields missing.',
@@ -865,7 +879,7 @@ export class ReportsComponent implements OnInit {
           'Production reports table not found. Please create it in Supabase.',
           'error'
         );
-      } else {
+      } else if (!this.isInitializing) { // Only show generic error if not initializing
         this.showSnackbar(
           `Database error: ${error.message || 'Unknown error'}`,
           'error'
@@ -1053,10 +1067,27 @@ export class ReportsComponent implements OnInit {
     // Save changes to database (only if item has an ID)
     if (item.id) {
       try {
-        await this.saveToDatabase(item);
+        const savedItem = await this.saveToDatabase(item);
+        if (savedItem) {
+          // Update in original data store
+          this.updateItemInOriginalData(savedItem);
+        }
       } catch (error: any) {
         console.error('Error saving calculation:', error);
         this.showSnackbar('Failed to save changes to database: ' + (error?.message || String(error)), 'error');
+      }
+    }
+  }
+
+  // Helper method to update item in original data store
+  private updateItemInOriginalData(updatedItem: ReportItem) {
+    const store = updatedItem.store;
+    const originalStoreData = this.originalReportData.get(store);
+    if (originalStoreData) {
+      const index = originalStoreData.findIndex(p => p.id === updatedItem.id);
+      if (index !== -1) {
+        originalStoreData[index] = updatedItem;
+        this.originalReportData.set(store, originalStoreData);
       }
     }
   }
@@ -1130,27 +1161,48 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      // Update local data
-      const storeData = this.getCurrentStoreData();
+      // Update BOTH data stores: original and filtered
+      const originalStoreData = this.originalReportData.get(this.selectedStore) || [];
+      const filteredStoreData = this.allReportData.get(this.selectedStore) || [];
       
       if (this.isEditing) {
-        const index = storeData.findIndex(p => p.id === savedItem.id);
-        if (index !== -1) {
-          storeData[index] = savedItem;
-          this.allReportData.set(this.selectedStore, storeData);
-          this.showSnackbar(`Product "${savedItem.sku}" updated successfully`, 'success');
+        // Update in original data
+        const origIndex = originalStoreData.findIndex(p => p.id === savedItem.id);
+        if (origIndex !== -1) {
+          originalStoreData[origIndex] = savedItem;
         }
+        
+        // Update in filtered data (if it exists there)
+        const filtIndex = filteredStoreData.findIndex(p => p.id === savedItem.id);
+        if (filtIndex !== -1) {
+          filteredStoreData[filtIndex] = savedItem;
+        }
+        
+        this.originalReportData.set(this.selectedStore, originalStoreData);
+        this.allReportData.set(this.selectedStore, filteredStoreData);
+        
+        this.showSnackbar(`Product "${savedItem.sku}" updated successfully`, 'success');
       } else {
-        // Check for duplicate SKU in current store for the same week
-        if (storeData.some(p => p.sku === savedItem.sku && 
+        // Check for duplicate SKU in original data for the same week
+        if (originalStoreData.some(p => p.sku === savedItem.sku && 
             p.weekStartDate === savedItem.weekStartDate && 
             p.weekEndDate === savedItem.weekEndDate)) {
           this.showSnackbar(`Product with SKU "${savedItem.sku}" already exists in this store for the selected week`, 'error');
           return;
         }
         
-        storeData.unshift(savedItem);
-        this.allReportData.set(this.selectedStore, storeData);
+        // Add to original data
+        originalStoreData.unshift(savedItem);
+        this.originalReportData.set(this.selectedStore, originalStoreData);
+        
+        // Add to filtered data (if it matches current week filter)
+        if (this.selectedWeek && 
+            savedItem.weekStartDate === this.selectedWeek.weekStartDate &&
+            savedItem.weekEndDate === this.selectedWeek.weekEndDate) {
+          filteredStoreData.unshift(savedItem);
+          this.allReportData.set(this.selectedStore, filteredStoreData);
+        }
+        
         this.showSnackbar(`Product "${savedItem.sku}" added successfully to ${this.selectedStore}`, 'success');
       }
 
@@ -1190,15 +1242,20 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      // Remove from local data
-      const storeData = this.getCurrentStoreData();
-      const index = storeData.findIndex(p => p.id === product.id);
-      if (index !== -1) {
-        storeData.splice(index, 1);
-        this.allReportData.set(this.selectedStore, storeData);
-        this.loadStoreData();
-        this.showSnackbar(`Product "${product.sku}" deleted successfully from ${this.selectedStore}`, 'error');
-      }
+      // Remove from BOTH data stores
+      let originalStoreData = this.originalReportData.get(this.selectedStore) || [];
+      let filteredStoreData = this.allReportData.get(this.selectedStore) || [];
+      
+      // Remove from original data (permanent storage)
+      originalStoreData = originalStoreData.filter(p => p.id !== product.id);
+      this.originalReportData.set(this.selectedStore, originalStoreData);
+      
+      // Remove from filtered data (current view)
+      filteredStoreData = filteredStoreData.filter(p => p.id !== product.id);
+      this.allReportData.set(this.selectedStore, filteredStoreData);
+      
+      this.loadStoreData();
+      this.showSnackbar(`Product "${product.sku}" deleted successfully from ${this.selectedStore}`, 'error');
     } catch (error: any) {
       console.error('Error deleting product:', error);
       this.showSnackbar('Failed to delete product: ' + (error?.message || String(error)), 'error');
@@ -1238,7 +1295,22 @@ export class ReportsComponent implements OnInit {
       );
       
       if (success) {
+        // Clear from filtered data
         this.allReportData.set(this.selectedStore, []);
+        
+        // Also clear from original data for the specific week
+        if (this.selectedWeek) {
+          const originalItems = this.originalReportData.get(this.selectedStore) || [];
+          const remainingItems = originalItems.filter(item => 
+            item.weekStartDate !== this.selectedWeek!.weekStartDate ||
+            item.weekEndDate !== this.selectedWeek!.weekEndDate
+          );
+          this.originalReportData.set(this.selectedStore, remainingItems);
+        } else {
+          // Clear all if no week selected
+          this.originalReportData.set(this.selectedStore, []);
+        }
+        
         this.loadStoreData();
         this.showSnackbar(`All production data cleared for ${this.selectedStore}`, 'error');
       } else {
@@ -1432,6 +1504,7 @@ export class ReportsComponent implements OnInit {
 
     // Load previous week's data from database
     this.isLoading = true;
+    this.loadingMessage = 'Copying data from previous week...';
     try {
       const { data, error } = await this.supabase['supabase']
         .from('production_reports')
@@ -1471,20 +1544,39 @@ export class ReportsComponent implements OnInit {
         return localItem;
       });
 
-      // Save all new items
+      // Save all new items with progress
+      let savedCount = 0;
+      const totalItems = newItems.length;
+      
       for (const item of newItems) {
-        await this.saveToDatabase(item);
+        const savedItem = await this.saveToDatabase(item);
+        if (savedItem) {
+          // Add to both original and filtered data stores
+          let originalStoreData = this.originalReportData.get(this.selectedStore) || [];
+          originalStoreData.push(savedItem);
+          this.originalReportData.set(this.selectedStore, originalStoreData);
+          
+          let filteredStoreData = this.allReportData.get(this.selectedStore) || [];
+          filteredStoreData.push(savedItem);
+          this.allReportData.set(this.selectedStore, filteredStoreData);
+          
+          savedCount++;
+          this.loadingProgress = `${savedCount}/${totalItems}`;
+          this.cdr.detectChanges();
+        }
       }
 
-      // Reload data
-      await this.loadReportsFromDatabase();
-      this.showSnackbar(`Copied ${newItems.length} items from previous week`, 'success');
+      // Reload current view
+      this.loadStoreData();
+      this.showSnackbar(`Copied ${savedCount} items from previous week`, 'success');
 
     } catch (error: any) {
       console.error('Error copying previous week data:', error);
       this.showSnackbar('Failed to copy previous week data: ' + (error?.message || String(error)), 'error');
     } finally {
       this.isLoading = false;
+      this.loadingMessage = '';
+      this.loadingProgress = '';
     }
   }
 
