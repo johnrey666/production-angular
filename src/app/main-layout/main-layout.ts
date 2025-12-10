@@ -20,7 +20,6 @@ export class MainLayoutComponent {
     { path: '/production', label: 'Production', icon: '🏭' },
     { path: '/raw-materials', label: 'Raw Materials', icon: '📦' },
     { path: '/recipes', label: 'Recipes', icon: '📝' },
-    { path: '/cost-analysis', label: 'Cost Analysis', icon: '💰' },
     { path: '/reports', label: 'Reports', icon: '📈' }
   ];
 

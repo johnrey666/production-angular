@@ -495,7 +495,8 @@ export class ProductionComponent implements OnInit, OnDestroy {
     try {
       // Get start and end dates for current month
       const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
-      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
+      const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
       
       console.log(`Loading monthly data from ${startDate} to ${endDate}`);
       
@@ -507,171 +508,172 @@ export class ProductionComponent implements OnInit, OnDestroy {
       const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
       console.log(`Found ${monthlyData.length} production logs for the month`);
       
-      if (monthlyData.length === 0) {
-        console.log('No production data found for this month');
-        // Create empty monthly entries for all recipes
-        this.monthlyEntries = recipes.map(recipe => {
-          const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
-          return {
-            recipe: productionRecipe,
+      // Create a map to aggregate data by recipe ID and date (for unique orders per day)
+      const recipeAggregation = new Map<string, Map<string, {
+        orderKg: number,
+        skus: Map<string, {
+          actualOutput: number,
+          rawMatCost: number
+        }>,
+        premixes: Map<string, {
+          actualOutput: number,
+          rawMatCost: number
+        }>
+      }>>();
+      
+      // Process all logs and aggregate data
+      monthlyData.forEach(log => {
+        const recipeId = log.recipe_id;
+        const date = log.date;
+        
+        if (!recipeId || !date) {
+          console.warn('Log missing recipe_id or date:', log);
+          return;
+        }
+        
+        if (!recipeAggregation.has(recipeId)) {
+          recipeAggregation.set(recipeId, new Map());
+        }
+        
+        const dateMap = recipeAggregation.get(recipeId)!;
+        
+        if (!dateMap.has(date)) {
+          dateMap.set(date, {
             orderKg: 0,
-            isExpanded: false,
-            daysWithOrders: 0,
-            totalActualOutput: 0,
-            totalRawMatCost: 0,
-            skus: productionRecipe.skus.map(sku => ({...sku, actualOutput: 0, rawMatCost: 0})),
-            premixes: productionRecipe.premixes.map(premix => ({...premix, actualOutput: 0, rawMatCost: 0}))
+            skus: new Map(),
+            premixes: new Map()
+          });
+        }
+        
+        const dayData = dateMap.get(date)!;
+        
+        // Set orderKg for this day (use max order value if multiple logs for same recipe/date)
+        if (log.order_kg && log.order_kg > dayData.orderKg) {
+          dayData.orderKg = log.order_kg;
+        }
+        
+        // Aggregate SKU/premix data by name
+        const itemName = log.item_name;
+        const itemType = log.type;
+        
+        if (!itemName || !itemType) {
+          console.warn('Log missing item_name or type:', log);
+          return;
+        }
+        
+        const itemMap = itemType === 'sku' ? dayData.skus : dayData.premixes;
+        
+        if (!itemMap.has(itemName)) {
+          itemMap.set(itemName, {
+            actualOutput: 0,
+            rawMatCost: 0
+          });
+        }
+        
+        const itemData = itemMap.get(itemName)!;
+        
+        // Sum up actual output and raw material cost
+        if (log.actual_output) {
+          itemData.actualOutput += log.actual_output;
+        }
+        
+        if (log.raw_cost) {
+          itemData.rawMatCost += log.raw_cost;
+        }
+      });
+      
+      console.log(`Aggregated data for ${recipeAggregation.size} recipes`);
+      
+      // Create monthly entries for ALL recipes with aggregated data
+      this.monthlyEntries = recipes.map(recipe => {
+        const recipeId = recipe.id || '';
+        const dateMap = recipeAggregation.get(recipeId);
+        
+        // Convert base recipe
+        const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
+        
+        // Calculate total order and days with orders
+        let totalOrderKg = 0;
+        const daysWithOrdersSet = new Set<string>();
+        let totalActualOutput = 0;
+        let totalRawMatCost = 0;
+        
+        // Maps to aggregate item data across all days
+        const skuAggregatedData = new Map<string, { actualOutput: number, rawMatCost: number }>();
+        const premixAggregatedData = new Map<string, { actualOutput: number, rawMatCost: number }>();
+        
+        if (dateMap) {
+          dateMap.forEach((dayData, date) => {
+            if (dayData.orderKg > 0) {
+              totalOrderKg += dayData.orderKg;
+              daysWithOrdersSet.add(date);
+            }
+            
+            // Aggregate SKU data
+            dayData.skus.forEach((itemData, itemName) => {
+              if (!skuAggregatedData.has(itemName)) {
+                skuAggregatedData.set(itemName, { actualOutput: 0, rawMatCost: 0 });
+              }
+              const aggData = skuAggregatedData.get(itemName)!;
+              aggData.actualOutput += itemData.actualOutput;
+              aggData.rawMatCost += itemData.rawMatCost;
+              totalActualOutput += itemData.actualOutput;
+              totalRawMatCost += itemData.rawMatCost;
+            });
+            
+            // Aggregate premix data
+            dayData.premixes.forEach((itemData, itemName) => {
+              if (!premixAggregatedData.has(itemName)) {
+                premixAggregatedData.set(itemName, { actualOutput: 0, rawMatCost: 0 });
+              }
+              const aggData = premixAggregatedData.get(itemName)!;
+              aggData.actualOutput += itemData.actualOutput;
+              aggData.rawMatCost += itemData.rawMatCost;
+              totalActualOutput += itemData.actualOutput;
+              totalRawMatCost += itemData.rawMatCost;
+            });
+          });
+        }
+        
+        // Create aggregated SKUs with monthly totals
+        const aggregatedSkus: ProductionSku[] = productionRecipe.skus.map(sku => {
+          const aggregatedData = skuAggregatedData.get(sku.name);
+          return {
+            ...sku,
+            actualOutput: aggregatedData?.actualOutput || 0,
+            rawMatCost: aggregatedData?.rawMatCost || 0,
+            variance: 0, // Variance doesn't make sense for monthly totals
+            remark: aggregatedData ? `${daysWithOrdersSet.size} day(s) with production` : 'No production'
           };
         });
-      } else {
-        // Log sample data to debug
-        console.log('Sample logs:', monthlyData.slice(0, 3));
         
-        // Create a map to aggregate data by recipe
-        const recipeAggregation = new Map<string, {
-          totalOrder: number,
-          days: Set<string>,
-          skus: Map<string, {
-            name: string,
-            type: string,
-            quantity1b: number,
-            quantityhalfb: number,
-            quantityquarterb: number,
-            totalActualOutput: number,
-            totalRawMatCost: number
-          }>,
-          premixes: Map<string, {
-            name: string,
-            type: string,
-            quantity1b: number,
-            quantityhalfb: number,
-            quantityquarterb: number,
-            totalActualOutput: number,
-            totalRawMatCost: number
-          }>
-        }>();
-        
-        // Process all logs and aggregate data
-        monthlyData.forEach(log => {
-          const recipeId = log.recipe_id;
-          
-          if (!recipeId) {
-            console.warn('Log missing recipe_id:', log);
-            return;
-          }
-          
-          if (!recipeAggregation.has(recipeId)) {
-            recipeAggregation.set(recipeId, {
-              totalOrder: 0,
-              days: new Set(),
-              skus: new Map(),
-              premixes: new Map()
-            });
-          }
-          
-          const recipeData = recipeAggregation.get(recipeId)!;
-          
-          // Add order if it exists - DEBUG LOGGING
-          if (log.order_kg && log.order_kg > 0) {
-            console.log(`Adding order ${log.order_kg} for recipe ${recipeId} on date ${log.date}`);
-            recipeData.totalOrder += log.order_kg;
-            recipeData.days.add(log.date);
-          }
-          
-          // Aggregate SKU/premix data
-          const itemName = log.item_name;
-          const itemType = log.type;
-          
-          if (!itemName || !itemType) {
-            console.warn('Log missing item_name or type:', log);
-            return;
-          }
-          
-          const itemMap = itemType === 'sku' ? recipeData.skus : recipeData.premixes;
-          
-          if (!itemMap.has(itemName)) {
-            // For monthly view, we don't have quantity data in logs, so we'll get it from recipes later
-            itemMap.set(itemName, {
-              name: itemName,
-              type: itemType,
-              quantity1b: 0,
-              quantityhalfb: 0,
-              quantityquarterb: 0,
-              totalActualOutput: 0,
-              totalRawMatCost: 0
-            });
-          }
-          
-          const itemData = itemMap.get(itemName)!;
-          
-          // Sum up actual output and raw material cost
-          if (log.actual_output) {
-            itemData.totalActualOutput += log.actual_output;
-          }
-          
-          if (log.raw_cost) {
-            itemData.totalRawMatCost += log.raw_cost;
-          }
+        // Create aggregated premixes with monthly totals
+        const aggregatedPremixes: ProductionSku[] = productionRecipe.premixes.map(premix => {
+          const aggregatedData = premixAggregatedData.get(premix.name);
+          return {
+            ...premix,
+            actualOutput: aggregatedData?.actualOutput || 0,
+            rawMatCost: aggregatedData?.rawMatCost || 0,
+            variance: 0, // Variance doesn't make sense for monthly totals
+            remark: aggregatedData ? `${daysWithOrdersSet.size} day(s) with production` : 'No production'
+          };
         });
         
-        console.log(`Aggregated data for ${recipeAggregation.size} recipes`);
-        
-        // Create monthly entries for ALL recipes with aggregated data
-        this.monthlyEntries = recipes.map(recipe => {
-          const recipeId = recipe.id || '';
-          const recipeData = recipeAggregation.get(recipeId);
-          
-          // Convert base recipe
-          const productionRecipe = convertRecipeWithDetailsToProductionRecipe(recipe);
-          
-          // Get quantity data from recipe for each SKU/premix
-          const aggregatedSkus: ProductionSku[] = productionRecipe.skus.map(sku => {
-            const aggregatedData = recipeData?.skus.get(sku.name);
-            return {
-              ...sku,
-              actualOutput: aggregatedData?.totalActualOutput || 0,
-              rawMatCost: aggregatedData?.totalRawMatCost || 0,
-              // For monthly view, variance is not applicable
-              variance: 0,
-              remark: aggregatedData ? `${recipeData?.days.size || 0} day(s) with production` : 'No production'
-            };
-          });
-          
-          const aggregatedPremixes: ProductionSku[] = productionRecipe.premixes.map(premix => {
-            const aggregatedData = recipeData?.premixes.get(premix.name);
-            return {
-              ...premix,
-              actualOutput: aggregatedData?.totalActualOutput || 0,
-              rawMatCost: aggregatedData?.totalRawMatCost || 0,
-              // For monthly view, variance is not applicable
-              variance: 0,
-              remark: aggregatedData ? `${recipeData?.days.size || 0} day(s) with production` : 'No production'
-            };
-          });
-          
-          // Calculate totals
-          const totalActualOutput = aggregatedSkus.reduce((sum, sku) => sum + sku.actualOutput, 0) +
-                                   aggregatedPremixes.reduce((sum, premix) => sum + premix.actualOutput, 0);
-          
-          const totalRawMatCost = aggregatedSkus.reduce((sum, sku) => sum + sku.rawMatCost, 0) +
-                                 aggregatedPremixes.reduce((sum, premix) => sum + premix.rawMatCost, 0);
-          
-          return {
-            recipe: {
-              ...productionRecipe,
-              skus: aggregatedSkus,
-              premixes: aggregatedPremixes
-            },
-            orderKg: recipeData?.totalOrder || 0,
-            isExpanded: false,
-            daysWithOrders: recipeData?.days.size || 0,
-            totalActualOutput,
-            totalRawMatCost,
+        return {
+          recipe: {
+            ...productionRecipe,
             skus: aggregatedSkus,
             premixes: aggregatedPremixes
-          };
-        });
-      }
+          },
+          orderKg: totalOrderKg,
+          isExpanded: false,
+          daysWithOrders: daysWithOrdersSet.size,
+          totalActualOutput,
+          totalRawMatCost,
+          skus: aggregatedSkus,
+          premixes: aggregatedPremixes
+        };
+      });
       
       // Calculate monthly total
       this.monthlyTotal = this.monthlyEntries.reduce((sum, entry) => sum + entry.orderKg, 0);
@@ -682,9 +684,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
       
       // Mark days with production for calendar
       this.markProductionDays(monthlyData);
-      
-      // DEBUG: Check what's in the database
-      await this.debugCheckData();
       
     } catch (error: any) {
       console.error('Failed to load monthly data:', error);
@@ -790,17 +789,18 @@ export class ProductionComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Monthly total functions
+  // Monthly total functions - FIXED VERSION
   async loadMonthlyTotal() {
     try {
       // Get start and end dates for current month
       const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
-      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
+      const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
       
       // Get ALL monthly data
       const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
       
-      // Calculate total orders for the month
+      // Calculate total orders for the month - Use unique orders per recipe per day
       const uniqueOrders = new Set<string>();
       let totalOrders = 0;
       
@@ -815,6 +815,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
       });
       
       this.monthlyTotal = totalOrders;
+      console.log(`Calendar monthly total: ${this.monthlyTotal} batches from ${uniqueOrders.size} unique orders`);
       
       // Mark days with production
       this.markProductionDays(monthlyData);
@@ -1211,64 +1212,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
     this.showSnackbar(`Viewing details for ${entry.recipe.name}`, 'info');
   }
 
-  // Debug method to check database contents
-  async debugCheckData() {
-    try {
-      console.log('=== DEBUG: Checking database data ===');
-      console.log(`Current month: ${this.currentMonth + 1} (${this.getMonthName(this.currentMonth)}) ${this.currentYear}`);
-      
-      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
-      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-31`;
-      
-      console.log(`Date range: ${startDate} to ${endDate}`);
-      
-      const monthlyData = await this.supabase.getProductionLogsByDateRange(startDate, endDate);
-      console.log(`Total logs in database for this month: ${monthlyData.length}`);
-      
-      if (monthlyData.length > 0) {
-        console.log('Sample logs:');
-        monthlyData.slice(0, 5).forEach((log, i) => {
-          console.log(`Log ${i + 1}:`, {
-            date: log.date,
-            recipe_id: log.recipe_id,
-            recipe_name: log.recipe_name,
-            order_kg: log.order_kg,
-            type: log.type,
-            item_name: log.item_name,
-            actual_output: log.actual_output,
-            raw_cost: log.raw_cost
-          });
-        });
-        
-        // Group by recipe
-        const byRecipe = new Map();
-        monthlyData.forEach(log => {
-          const recipeId = log.recipe_id;
-          if (!byRecipe.has(recipeId)) {
-            byRecipe.set(recipeId, {
-              name: log.recipe_name,
-              totalOrder: 0,
-              logs: []
-            });
-          }
-          const data = byRecipe.get(recipeId);
-          if (log.order_kg) data.totalOrder += log.order_kg;
-          data.logs.push(log);
-        });
-        
-        console.log('Data by recipe:');
-        byRecipe.forEach((data, recipeId) => {
-          console.log(`Recipe ${recipeId} (${data.name}): ${data.totalOrder} total order, ${data.logs.length} logs`);
-        });
-      }
-      
-      console.log('=== END DEBUG ===');
-      
-    } catch (error) {
-      console.error('Debug check error:', error);
-    }
-  }
-
   // Auto-save methods with immediate save
   private async autoSaveToDatabase() {
     try {
@@ -1473,7 +1416,10 @@ export class ProductionComponent implements OnInit, OnDestroy {
           exportData.push({
             'Recipe': entry.recipe.name,
             'Order (batch)': entry.orderKg,
-            'STD Yield (batch)': entry.recipe.std_yield || 0
+            'STD Yield (batch)': entry.recipe.std_yield || 0,
+            'Days with Orders': entry.daysWithOrders,
+            'Total Actual Output': entry.totalActualOutput,
+            'Total Raw Mat Cost': entry.totalRawMatCost
           });
           
           exportData.push({
@@ -1483,7 +1429,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
             '¼B': '¼B',
             'ACTUAL RAW MAT (batch)': 'ACTUAL RAW MAT (batch)',
             'ACTUAL OUTPUT (batch)': 'ACTUAL OUTPUT (batch)',
-            'VARIANCE (batch)': 'VARIANCE (batch)',
             'RAW MAT COST (₱)': 'RAW MAT COST (₱)',
             'REMARK': 'REMARK'
           });
@@ -1496,7 +1441,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
               '¼B': sku.quantityquarterb,
               'ACTUAL RAW MAT (batch)': this.calculateActualRawMat(entry.orderKg, sku.quantity1b),
               'ACTUAL OUTPUT (batch)': sku.actualOutput || 0,
-              'VARIANCE (batch)': 'N/A (Monthly Total)',
               'RAW MAT COST (₱)': sku.rawMatCost || 0,
               'REMARK': sku.remark || ''
             });
@@ -1510,7 +1454,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
               '¼B': premix.quantityquarterb,
               'ACTUAL RAW MAT (batch)': this.calculateActualRawMat(entry.orderKg, premix.quantity1b),
               'ACTUAL OUTPUT (batch)': premix.actualOutput || 0,
-              'VARIANCE (batch)': 'N/A (Monthly Total)',
               'RAW MAT COST (₱)': premix.rawMatCost || 0,
               'REMARK': premix.remark || ''
             });
@@ -1523,7 +1466,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
             '¼B': '',
             'ACTUAL RAW MAT (batch)': '',
             'ACTUAL OUTPUT (batch)': '',
-            'VARIANCE (batch)': '',
             'RAW MAT COST (₱)': '',
             'REMARK': ''
           });
@@ -1534,7 +1476,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
       
       const wscols = [
         { wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
-        { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 25 }
+        { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 25 }
       ];
       ws['!cols'] = wscols;
       
