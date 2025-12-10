@@ -1,7 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
-// Removed animations import to avoid dependency on @angular/animations
 
 @Component({
   selector: 'app-main-layout',
@@ -12,7 +11,7 @@ import { CommonModule } from '@angular/common';
 })
 export class MainLayoutComponent {
   isCollapsed = false;
-  // Expose the router to the template for calls like `router.isActive(...)`
+  showLogoutConfirm = false;
   router = inject(Router);
   
   navItems = [
@@ -28,7 +27,32 @@ export class MainLayoutComponent {
   }
 
   onNavClick() {
-    // Optional: Auto-collapse on mobile or add click effects
     console.log('Navigation clicked');
+  }
+
+  confirmLogout() {
+    this.showLogoutConfirm = true;
+  }
+
+  cancelLogout() {
+    this.showLogoutConfirm = false;
+  }
+
+  logout() {
+    // Clear authentication data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    
+    // Clear any other stored data if needed
+    // localStorage.clear();
+    
+    // Hide confirmation dialog
+    this.showLogoutConfirm = false;
+    
+    // Navigate to login page
+    this.router.navigate(['/login']);
+    
+    // Optional: Show success message
+    // alert('Successfully logged out!');
   }
 }

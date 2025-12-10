@@ -54,9 +54,22 @@
         </div>
         <span class="nav-text">{{ item.label }}</span>
       </a>
+
+      <!-- Spacer to push logout to bottom -->
+      <div class="nav-spacer"></div>
+
+      <!-- Logout Button at the bottom -->
+      <button class="nav-item logout-button" (click)="confirmLogout()">
+        <div class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M13 7L16 10M16 10L13 13M16 10H7M11 17H5C4.46957 17 3.96086 16.7893 3.58579 16.4142C3.21071 16.0391 3 15.5304 3 15V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H11" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="nav-text">Logout</span>
+      </button>
     </nav>
 
-    <!-- User/Status footer (optional) -->
+    <!-- User/Status footer -->
     <div class="sidebar-footer" *ngIf="!isCollapsed">
       <div class="status-indicator">
         <div class="status-dot"></div>
@@ -69,4 +82,21 @@
   <main class="main-content" [class.content-expanded]="isCollapsed">
     <router-outlet></router-outlet>
   </main>
+
+  <!-- Confirmation Dialog -->
+  <div *ngIf="showLogoutConfirm" class="confirmation-overlay">
+    <div class="confirmation-dialog">
+      <div class="confirmation-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+          <path d="M12 9V12M12 15H12.01M5.07183 19H18.9282C20.4678 19 21.4301 17.3333 20.6603 16L13.7321 4C12.9623 2.66667 11.0377 2.66667 10.2679 4L3.33975 16C2.56995 17.3333 3.53223 19 5.07183 19Z" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h3 class="confirmation-title">Confirm Logout</h3>
+      <p class="confirmation-message">Are you sure you want to logout?</p>
+      <div class="confirmation-actions">
+        <button class="cancel-btn" (click)="cancelLogout()">Cancel</button>
+        <button class="confirm-btn" (click)="logout()">Yes, Logout</button>
+      </div>
+    </div>
+  </div>
 </div>
