@@ -161,6 +161,10 @@ export class ReportsComponent implements OnInit {
   startIndex = 0;
   endIndex = 0;
   
+  // Filtered data storage
+  filteredStoreData: ReportItem[] = [];
+  filteredAggregatedData: AggregatedItem[] = [];
+  
   // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
@@ -634,6 +638,7 @@ export class ReportsComponent implements OnInit {
   loadStoreData() {
     const storeData = this.getCurrentStoreData();
     this.displayedData = [...storeData];
+    this.filteredStoreData = [...storeData];
     this.applyFiltersAndSearch();
   }
 
@@ -708,6 +713,7 @@ export class ReportsComponent implements OnInit {
     // Convert map to array and sort
     this.aggregatedData = Array.from(skuMap.values())
       .sort((a, b) => a.sku.localeCompare(b.sku));
+    this.filteredAggregatedData = [...this.aggregatedData];
   }
 
   getCurrentStoreData(): ReportItem[] {
@@ -945,7 +951,8 @@ export class ReportsComponent implements OnInit {
         );
       }
       
-      this.updatePagination(filtered);
+      this.filteredStoreData = filtered;
+      this.updatePagination();
     }
   }
 
@@ -962,33 +969,48 @@ export class ReportsComponent implements OnInit {
       );
     }
     
-    this.updateAggregatedPagination(filtered);
+    this.filteredAggregatedData = filtered;
+    this.updateAggregatedPagination();
   }
 
-  updatePagination(filteredData: ReportItem[] = this.displayedData) {
-    this.totalPages = Math.max(Math.ceil(filteredData.length / this.itemsPerPage), 1);
+  updatePagination() {
+    // Reset to page 1 when filtering (if search query exists)
+    if (this.searchQuery.trim()) {
+      this.currentPage = 1;
+    }
+    
+    const dataToUse = this.searchQuery.trim() ? this.filteredStoreData : this.getCurrentStoreData();
+    
+    this.totalPages = Math.max(Math.ceil(dataToUse.length / this.itemsPerPage), 1);
     
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
       this.currentPage = this.totalPages;
     }
     
     this.startIndex = (this.currentPage - 1) * this.itemsPerPage;
-    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, filteredData.length);
-    this.displayedData = filteredData.slice(this.startIndex, this.endIndex);
+    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, dataToUse.length);
+    this.displayedData = dataToUse.slice(this.startIndex, this.endIndex);
     
     this.cdr.detectChanges();
   }
 
-  updateAggregatedPagination(filteredData: AggregatedItem[] = this.aggregatedData) {
-    this.totalPages = Math.max(Math.ceil(filteredData.length / this.itemsPerPage), 1);
+  updateAggregatedPagination() {
+    // Reset to page 1 when filtering (if search query exists)
+    if (this.searchQuery.trim()) {
+      this.currentPage = 1;
+    }
+    
+    const dataToUse = this.searchQuery.trim() ? this.filteredAggregatedData : this.aggregatedData;
+    
+    this.totalPages = Math.max(Math.ceil(dataToUse.length / this.itemsPerPage), 1);
     
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
       this.currentPage = this.totalPages;
     }
     
     this.startIndex = (this.currentPage - 1) * this.itemsPerPage;
-    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, filteredData.length);
-    this.displayedAggregatedData = filteredData.slice(this.startIndex, this.endIndex);
+    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, dataToUse.length);
+    this.displayedAggregatedData = dataToUse.slice(this.startIndex, this.endIndex);
     
     this.cdr.detectChanges();
   }
@@ -997,9 +1019,9 @@ export class ReportsComponent implements OnInit {
     if (this.currentPage < this.totalPages) { 
       this.currentPage++; 
       if (this.selectedStore === 'All') {
-        this.updateAggregatedPagination();
+        this.applyAggregatedFilters();
       } else {
-        this.updatePagination();
+        this.applyFiltersAndSearch();
       }
     }
   }
@@ -1008,9 +1030,9 @@ export class ReportsComponent implements OnInit {
     if (this.currentPage > 1) { 
       this.currentPage--; 
       if (this.selectedStore === 'All') {
-        this.updateAggregatedPagination();
+        this.applyAggregatedFilters();
       } else {
-        this.updatePagination();
+        this.applyFiltersAndSearch();
       }
     }
   }
@@ -1617,5 +1639,74 @@ export class ReportsComponent implements OnInit {
       this.showSnackbar(`Database test failed: ${error.message}`, 'error');
       return false;
     }
+  }
+
+  // Calculate total fill rate for current store (CORRECTED - excludes 0 order items)
+  getTotalFillRate(): number {
+    const storeData = this.getCurrentStoreData();
+    if (storeData.length === 0) return 0;
+    
+    // Only consider items with store order > 0
+    const validItems = storeData.filter(item => item.storeOrder > 0);
+    if (validItems.length === 0) return 0;
+    
+    const totalStoreOrder = validItems.reduce((sum, item) => sum + item.storeOrder, 0);
+    const totalDelivered = validItems.reduce((sum, item) => sum + item.delivered, 0);
+    
+    if (totalStoreOrder === 0) return 0;
+    return Math.round((totalDelivered / totalStoreOrder) * 100);
+  }
+
+  // Calculate average fill rate (simple average of valid items only)
+  getAverageFillRate(): number {
+    const storeData = this.getCurrentStoreData();
+    if (storeData.length === 0) return 0;
+    
+    // Only consider items with store order > 0
+    const validItems = storeData.filter(item => item.storeOrder > 0);
+    if (validItems.length === 0) return 0;
+    
+    const totalFillRate = validItems.reduce((sum, item) => sum + item.fillRate, 0);
+    return Math.round(totalFillRate / validItems.length);
+  }
+
+  // Count items with fill rate below 70% (only valid items)
+  getLowFillRateCount(): number {
+    const storeData = this.getCurrentStoreData();
+    const validItems = storeData.filter(item => item.storeOrder > 0);
+    return validItems.filter(item => item.fillRate < 70).length;
+  }
+
+  // Calculate total fill rate for aggregated view (CORRECTED)
+  getAggregatedTotalFillRate(): number {
+    if (this.aggregatedData.length === 0) return 0;
+    
+    // Only consider items with store order > 0
+    const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
+    if (validItems.length === 0) return 0;
+    
+    const totalStoreOrder = validItems.reduce((sum, item) => sum + item.totalStoreOrder, 0);
+    const totalDelivered = validItems.reduce((sum, item) => sum + item.totalDelivered, 0);
+    
+    if (totalStoreOrder === 0) return 0;
+    return Math.round((totalDelivered / totalStoreOrder) * 100);
+  }
+
+  // Calculate average fill rate for aggregated view (only valid items)
+  getAggregatedAverageFillRate(): number {
+    if (this.aggregatedData.length === 0) return 0;
+    
+    // Only consider items with store order > 0
+    const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
+    if (validItems.length === 0) return 0;
+    
+    const totalFillRate = validItems.reduce((sum, item) => sum + item.fillRate, 0);
+    return Math.round(totalFillRate / validItems.length);
+  }
+
+  // Count aggregated items with fill rate below 70% (only valid items)
+  getAggregatedLowFillRateCount(): number {
+    const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
+    return validItems.filter(item => item.fillRate < 70).length;
   }
 }

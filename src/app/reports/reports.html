@@ -429,6 +429,28 @@
             </button>
           </div>
         </div>
+
+        <!-- Total Fill Rate Summary (Aggregated) -->
+        <div class="total-fill-rate-summary compact-summary" *ngIf="selectedStore === 'All' && aggregatedData.length > 0">
+          <div class="summary-item">
+            <span class="summary-label">Total Fill Rate (All Stores):</span>
+            <span class="summary-value" [class]="getFillRateClass(getAggregatedTotalFillRate())">
+              {{ getAggregatedTotalFillRate() }}%
+            </span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Avg Fill Rate (Per SKU):</span>
+            <span class="summary-value" [class]="getFillRateClass(getAggregatedAverageFillRate())">
+              {{ getAggregatedAverageFillRate() }}%
+            </span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">SKUs Below 70%:</span>
+            <span class="summary-value low">
+              {{ getAggregatedLowFillRateCount() }} of {{ aggregatedData.length }}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -581,6 +603,28 @@
           </button>
         </div>
       </div>
+
+      <!-- Total Fill Rate Summary (Single Store) -->
+      <div class="total-fill-rate-summary compact-summary" *ngIf="selectedStore && selectedStore !== 'custom' && selectedStore !== 'All' && getCurrentStoreData().length > 0">
+        <div class="summary-item">
+          <span class="summary-label">Total Fill Rate:</span>
+          <span class="summary-value" [class]="getFillRateClass(getTotalFillRate())">
+            {{ getTotalFillRate() }}%
+          </span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Avg Fill Rate:</span>
+          <span class="summary-value" [class]="getFillRateClass(getAverageFillRate())">
+            {{ getAverageFillRate() }}%
+          </span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">SKUs with Fill Rate &lt; 70%:</span>
+          <span class="summary-value low">
+            {{ getLowFillRateCount() }} of {{ getCurrentStoreData().length }}
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -673,7 +717,7 @@
               >
             </div>
           </div>
-          
+  
           <div class="form-group compact-form-group">
             <label class="compact-label">Remarks</label>
             <input 
