@@ -1,120 +1,109 @@
 <div class="dashboard" @fadeInUp>
-  <!-- Loading State - Inside Dashboard Only -->
-  <div *ngIf="isLoading" class="loading-state">
-    <div class="loading-spinner"></div>
-    <p>{{ loadingMessage }}</p>
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-overlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <p class="loading-text">{{ loadingMessage }}</p>
+    </div>
   </div>
 
-  <!-- Dashboard Content - Hidden when loading -->
-  <div *ngIf="!isLoading">
+  <!-- Dashboard Content -->
+  <div *ngIf="!isLoading" class="dashboard-content">
     <!-- Header -->
-    <div class="dashboard-header">
-      <div>
+    <header class="dashboard-header">
+      <div class="header-left">
         <h1 class="dashboard-title">Production Dashboard</h1>
-        <div class="date-display">{{ currentDate }}</div>
+        <div class="date-info">
+          <span class="current-date">{{ currentDate }}</span>
+          <span class="separator">•</span>
+          <span class="period">{{ currentMonthYear }}</span>
+        </div>
       </div>
       <button class="refresh-btn" (click)="refreshData()" [disabled]="isLoading">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M23 4v6h-6"></path>
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
         </svg>
-        {{ isLoading ? 'Refreshing...' : 'Refresh Data' }}
+        <span>{{ isLoading ? 'Refreshing...' : 'Refresh' }}</span>
       </button>
-    </div>
+    </header>
 
     <!-- Summary Stats -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ allStoresFillRate }}%</div>
-          <div class="stat-label">All Store Fill Rate</div>
-          <div class="stat-trend" [class]="getTrendClass(fillRateTrend)">
-            {{ fillRateTrend > 0 ? '+' : '' }}{{ fillRateTrend }}%
-          </div>
+    <div class="stats-container">
+      <div class="stat-item" [class]="getFillRateClass(allStoresFillRate)">
+        <div class="stat-value">{{ allStoresFillRate }}%</div>
+        <div class="stat-label">Fill Rate</div>
+        <div class="stat-trend">
+          {{ fillRateTrend > 0 ? '↑' : fillRateTrend < 0 ? '↓' : '→' }}
+          {{ fillRateTrend > 0 ? '+' : '' }}{{ fillRateTrend }}%
         </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ totalRecipes }}</div>
-          <div class="stat-label"># of Recipes</div>
-          <div class="stat-trend neutral">±0</div>
-        </div>
+      
+      <div class="stat-item">
+        <div class="stat-value">{{ totalRecipes }}</div>
+        <div class="stat-label">Recipes</div>
+        <div class="stat-trend">Active</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ totalRawMaterials }}</div>
-          <div class="stat-label"># of Raw Materials</div>
-          <div class="stat-trend neutral">±0</div>
-        </div>
+      
+      <div class="stat-item">
+        <div class="stat-value">{{ totalRawMaterials }}</div>
+        <div class="stat-label">Materials</div>
+        <div class="stat-trend">Total</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-content">
-          <div class="stat-value">{{ topProductOrder | number:'1.1-1' }}</div>
-          <div class="stat-label">{{ topProductName }} (Order)</div>
-          <div class="stat-trend positive">Top Product</div>
-        </div>
+      
+      <div class="stat-item">
+        <div class="stat-value">{{ topProductOrder | number:'1.1-1' }}</div>
+        <div class="stat-label">{{ topProductName }}</div>
+        <div class="stat-trend">Top Product</div>
       </div>
     </div>
 
     <!-- Main Content -->
-    <div class="content-grid">
-      <!-- Summary - 70% width -->
-      <div class="summary-section wide-section" @slideIn>
+    <div class="main-content">
+      <!-- Overview -->
+      <div class="overview-section">
         <div class="section-header">
-          <h2 class="section-title">Monthly Overview</h2>
-          <div class="status-indicator">
+          <h2>Monthly Overview</h2>
+          <div class="status">
             <span class="status-dot active"></span>
-            <span class="status-text">Current Month: {{ currentMonthYear }}</span>
+            <span>Current Period</span>
           </div>
         </div>
         
-        <div class="metrics-row">
-          <div class="metric">
-            <div class="metric-label">Top Product</div>
-            <div class="metric-value">{{ topProductName }}</div>
-            <div class="metric-subtext">{{ topProductOrder | number:'1.1-1' }} batches</div>
+        <div class="overview-stats">
+          <div class="overview-stat">
+            <span class="stat-title">Total Batches</span>
+            <span class="stat-number">{{ totalBatches | number:'1.1-1' }}</span>
           </div>
-          <div class="metric">
-            <div class="metric-label">Total Batches</div>
-            <div class="metric-value">{{ totalBatches | number:'1.1-1' }}</div>
-            <div class="metric-subtext">All Stores</div>
+          
+          <div class="overview-stat">
+            <span class="stat-title">Reporting Stores</span>
+            <span class="stat-number">{{ storesReporting }}/{{ totalStores }}</span>
           </div>
-          <div class="metric">
-            <div class="metric-label">Avg. Fill Rate</div>
-            <div class="metric-value">{{ allStoresFillRate }}%</div>
-            <div class="metric-subtext" [class]="getFillRateClass(allStoresFillRate)">
-              {{ getFillRateStatus(allStoresFillRate) }}
-            </div>
-          </div>
-        </div>
-        
-        <div class="monthly-summary">
-          <div class="summary-item">
-            <span class="summary-label">Stores Reporting:</span>
-            <span class="summary-value">{{ storesReporting }}/{{ totalStores }}</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Active SKUs:</span>
-            <span class="summary-value">{{ activeSkus }}</span>      
+          
+          <div class="overview-stat">
+            <span class="stat-title">Active SKUs</span>
+            <span class="stat-number">{{ activeSkus }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Alerts - 30% width -->
-      <div class="alerts-section narrow-section" @slideIn>
+      <!-- Alerts -->
+      <div class="alerts-section">
         <div class="section-header">
-          <h2 class="section-title">Low Fill Rate Alerts</h2>
-          <div class="alert-badge" *ngIf="lowFillRateProducts.length > 0">{{ lowFillRateProducts.length }}</div>
+          <h2>Alerts</h2>
+          <span class="badge" *ngIf="lowFillRateProducts.length > 0">{{ lowFillRateProducts.length }}</span>
         </div>
         
         <div class="alerts-list" *ngIf="lowFillRateProducts.length > 0; else noAlerts">
           <div *ngFor="let product of lowFillRateProducts.slice(0, 3)" class="alert-item">
-            <div class="alert-type warning"></div>
+            <div class="alert-icon">!</div>
             <div class="alert-content">
               <div class="alert-title">{{ product.sku }}</div>
               <div class="alert-details">
-                <span class="alert-meta">{{ product.fillRate }}%</span>
-                <span class="alert-store">{{ product.store }}</span>
+                <span>{{ product.fillRate }}%</span>
+                <span>•</span>
+                <span>{{ product.store }}</span>
               </div>
             </div>
           </div>
@@ -122,196 +111,134 @@
         
         <ng-template #noAlerts>
           <div class="no-alerts">
-            <div class="no-alerts-icon">✓</div>
-            <div class="no-alerts-text">No products with fill rate below 70%</div>
+            <span>✓</span>
+            <span>No alerts</span>
           </div>
         </ng-template>
-        
-        <div *ngIf="lowFillRateProducts.length > 3" class="more-alerts">
-          +{{ lowFillRateProducts.length - 3 }} more alerts
-        </div>
       </div>
     </div>
 
-    <!-- Monthly SKU/Raw Materials Summary Table -->
-    <div class="table-section" @slideIn>
+    <!-- Production Table -->
+    <div class="table-section">
       <div class="section-header">
-        <h2 class="section-title">Monthly Production Summary</h2>
-        
-        <!-- Month/Year Selector -->
-        <div class="month-selector">
-          <div class="selector-group">
-            <label class="selector-label">Month:</label>
+        <div class="table-header-left">
+          <h2>Production Summary</h2>
+          <div class="period-selector">
             <select class="month-select" [(ngModel)]="selectedMonth" (change)="onMonthChange()">
-              <option *ngFor="let month of months" [value]="month.value">
-                {{ month.label }}
-              </option>
+              <option *ngFor="let month of months" [value]="month.value">{{ month.label }}</option>
             </select>
-          </div>
-          
-          <div class="selector-group">
-            <label class="selector-label">Year:</label>
             <select class="year-select" [(ngModel)]="selectedYear" (change)="onYearChange()">
-              <option *ngFor="let year of years" [value]="year">
-                {{ year }}
-              </option>
+              <option *ngFor="let year of years" [value]="year">{{ year }}</option>
             </select>
-          </div>
-          
-          <div class="current-period">
-            <span class="period-label">Viewing:</span>
-            <span class="period-value">{{ currentMonthYear }}</span>
           </div>
         </div>
-      </div>
-      
-      <!-- Table Controls Row -->
-      <div class="table-controls-row">
-        <!-- Search Bar -->
-        <div class="search-container">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input 
-            type="text" 
-            class="search-input" 
-            placeholder="Search SKU, Raw Material, or Type..." 
-            [(ngModel)]="searchTerm"
-            (ngModelChange)="filterMonthlySummary()"
-          >
-          <button *ngIf="searchTerm" class="clear-search" (click)="clearSearch()">
-            ×
+        
+        <div class="table-header-right">
+          <div class="search-box">
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              [(ngModel)]="searchTerm"
+              (ngModelChange)="filterMonthlySummary()"
+            >
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <button class="export-btn" (click)="exportToExcel()" [disabled]="monthlySummary.length === 0">
+            Export
           </button>
         </div>
-        
-        <!-- Export Button -->
-        <button class="export-btn" (click)="exportToExcel()" [disabled]="monthlySummary.length === 0">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="7 10 12 15 17 10"></polyline>
-            <line x1="12" y1="15" x2="12" y2="3"></line>
-          </svg>
-          Export to Excel
-        </button>
       </div>
-      
-      <div class="table-stats">
-        <span class="table-stat">Showing {{ paginatedMonthlySummary.length }} of {{ filteredMonthlySummary.length }} items ({{ monthlySummary.length }} total)</span>
-        <span *ngIf="searchTerm" class="filter-indicator">Search: "{{ searchTerm }}"</span>
+
+      <div class="table-info">
+        <span>{{ paginatedMonthlySummary.length }} of {{ filteredMonthlySummary.length }} items</span>
+        <span *ngIf="searchTerm" class="search-indicator">Filtered: "{{ searchTerm }}"</span>
       </div>
-      
-      <div class="table-container">
-        <table class="production-table">
+
+      <div class="table-wrapper">
+        <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 180px;">SKU / Raw Material</th>
-              <th style="width: 80px;" class="text-right">UM</th>
-              <th style="width: 140px;" class="text-right highlight-column">ACTUAL RAW MAT</th>
-              <th style="width: 120px;" class="text-right">ACTUAL OUTPUT</th>
-              <th style="width: 100px;" class="text-right">
-                VARIANCE
-                <span class="info-tooltip" title="Variance = Actual Output - Actual Raw Material
-A positive value means output exceeds raw material used (efficient)
-A negative value means raw material used exceeds output (inefficient)">
-                  ⓘ
-                </span>
-              </th>
-              <th style="width: 120px;" class="text-right">RAW MAT COST</th>
+              <th>SKU / Material</th>
+              <th class="text-right">UM</th>
+              <th class="text-right">Raw Material</th>
+              <th class="text-right">Output</th>
+              <th class="text-right">Variance</th>
+              <th class="text-right">Cost</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngIf="paginatedMonthlySummary.length === 0">
-              <td colspan="6" class="empty-table">
-                <div class="empty-table-content">
-                  <div class="empty-table-icon">📊</div>
-                  <div *ngIf="searchTerm" class="empty-table-text">No results found for "{{ searchTerm }}"</div>
-                  <div *ngIf="!searchTerm && monthlySummary.length === 0" class="empty-table-text">No production data for {{ currentMonthYear }}</div>
-                  <div *ngIf="!searchTerm && monthlySummary.length > 0" class="empty-table-text">No data matches your filter</div>
-                  <div class="empty-table-subtext">Try a different search term or start tracking production</div>
-                </div>
+              <td colspan="6" class="empty-state">
+                No data available
               </td>
             </tr>
             
             <tr *ngFor="let item of paginatedMonthlySummary">
-              <td class="sku-cell">
-                <div class="sku-content">
-                  <div class="sku-type" [class]="getTypeClass(item.type)">{{ item.type.charAt(0) }}</div>
+              <td>
+                <div class="sku-cell">
+                  <span class="sku-type" [class]="getTypeClass(item.type)">{{ item.type.charAt(0) }}</span>
                   <div>
-                    <strong>{{ item.sku }}</strong>
-                    <div class="sku-type-label">{{ item.type }}</div>
+                    <div class="sku-code">{{ item.sku }}</div>
+                    <div class="sku-category">{{ item.type }}</div>
                   </div>
                 </div>
               </td>
               
               <td class="text-right">
-                <span class="um-badge">{{ item.um }}</span>
-              </td>
-              
-              <td class="text-right highlight-cell">
-                <div class="highlight-value">
-                  <span class="value-cell">{{ item.actualRawMat | number:'1.3-3' }}</span>
-                  <div class="progress-bar" *ngIf="maxActualRawMat > 0">
-                    <div class="progress-fill" [style.width]="getProgressPercentage(item.actualRawMat)"></div>
-                  </div>
-                </div>
+                <span class="um">{{ item.um }}</span>
               </td>
               
               <td class="text-right">
-                <span class="value-cell">{{ item.actualOutput | number:'1.3-3' }}</span>
+                <span class="value">{{ item.actualRawMat | number:'1.3-3' }}</span>
               </td>
               
               <td class="text-right">
-                <span class="variance-cell" [class]="getVarianceClass(item.variance)">
+                <span class="value">{{ item.actualOutput | number:'1.3-3' }}</span>
+              </td>
+              
+              <td class="text-right">
+                <span class="variance" [class]="getVarianceClass(item.variance)">
                   {{ item.variance | number:'1.3-3' }}
                 </span>
               </td>
               
               <td class="text-right">
-                <span class="cost-cell">₱{{ item.rawMatCost | number:'1.2-2' }}</span>
+                <span class="cost">₱{{ item.rawMatCost | number:'1.2-2' }}</span>
               </td>
             </tr>
           </tbody>
+          
           <tfoot *ngIf="paginatedMonthlySummary.length > 0">
-            <tr class="page-totals">
-              <td colspan="2" class="footer-label">Page Totals</td>
-              <td class="text-right footer-total">{{ pageActualRawMat | number:'1.3-3' }}</td>
-              <td class="text-right footer-total">{{ pageActualOutput | number:'1.3-3' }}</td>
-              <td class="text-right footer-total" [class]="getVarianceClass(pageVariance)">
+            <tr class="totals-row">
+              <td colspan="2">Page Totals</td>
+              <td class="text-right">{{ pageActualRawMat | number:'1.3-3' }}</td>
+              <td class="text-right">{{ pageActualOutput | number:'1.3-3' }}</td>
+              <td class="text-right" [class]="getVarianceClass(pageVariance)">
                 {{ pageVariance | number:'1.3-3' }}
               </td>
-              <td class="text-right footer-total">₱{{ pageRawMatCost | number:'1.2-2' }}</td>
+              <td class="text-right">₱{{ pageRawMatCost | number:'1.2-2' }}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-      
-      <!-- Table Pagination -->
-      <div class="table-footer" *ngIf="filteredMonthlySummary.length > 0">
+
+      <!-- Pagination -->
+      <div class="pagination" *ngIf="filteredMonthlySummary.length > 0">
         <div class="pagination-info">
-          Showing {{ startIndex + 1 }}-{{ endIndex }} of {{ filteredMonthlySummary.length }} items
+          {{ startIndex + 1 }}-{{ endIndex }} of {{ filteredMonthlySummary.length }}
         </div>
         
         <div class="pagination-controls">
-          <div class="pagination-buttons">
-            <button class="pagination-btn" (click)="previousPage()" [disabled]="currentPage === 1">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-              Previous
-            </button>
-            
-            <div class="page-numbers">
-              Page <span class="current-page">{{ currentPage }}</span> of <span class="total-pages">{{ totalPages }}</span>
-            </div>
-            
-            <button class="pagination-btn" (click)="nextPage()" [disabled]="currentPage === totalPages">
-              Next
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          </div>
+          <button class="page-btn" (click)="previousPage()" [disabled]="currentPage === 1">
+            ← Prev
+          </button>
+          <span class="page-number">{{ currentPage }} of {{ totalPages }}</span>
+          <button class="page-btn" (click)="nextPage()" [disabled]="currentPage === totalPages">
+            Next →
+          </button>
         </div>
       </div>
     </div>

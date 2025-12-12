@@ -36,13 +36,27 @@
       <p class="compact-subtitle">Track weekly production data</p>
     </div>
     <div class="header-actions">
+      <!-- Clear All button for selected week -->
+      <button class="btn-danger btn-compact" 
+              (click)="clearAllLocationsData()" 
+              title="Clear All Data for Selected Week" 
+              [disabled]="!selectedWeek || isLoading">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+        Clear All
+      </button>
+      
       <button class="btn-danger btn-compact" (click)="clearCurrentStoreData()" title="Clear Store" 
               [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoading">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"></polyline>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
         </svg>
-        Clear
+        Clear Store
       </button>
       <button class="btn-primary btn-compact" (click)="exportToExcel()" [disabled]="isLoading">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -123,41 +137,203 @@
           </div>
         </div>
 
-        <!-- Store Selector -->
-        <div class="store-selector-compact">
-          <select class="store-dropdown compact-dropdown" 
-                  [(ngModel)]="selectedStore" 
-                  (change)="onStoreChange()"
-                  [disabled]="isLoading">
-            <option value="">-- Select Store --</option>
-            <option value="All">📊 All Stores</option>
-            <option *ngFor="let store of allStores.slice(1)" [value]="store">{{ store }}</option>
-            <option value="custom">+ Add Store</option>
-          </select>
-          
-          <div *ngIf="selectedStore === 'custom'" class="custom-store-input-compact">
-            <input 
-              type="text" 
-              class="form-input compact-input"
-              [(ngModel)]="newStoreName"
-              placeholder="New store name"
-              (keyup.enter)="addCustomStore()"
-              style="width: 150px;"
-              [disabled]="isLoading"
-            >
-            <button class="btn-icon-add compact-icon-btn" (click)="addCustomStore()" title="Add" [disabled]="isLoading">
+        <!-- Location Tree Selector -->
+        <div class="location-selector-wrapper">
+          <div class="location-selector compact-selector" 
+               [class.active]="showLocationDropdown"
+               (mouseenter)="isLocationHovered = true"
+               (mouseleave)="isLocationHovered = false">
+            <button class="location-selector-btn compact-btn" 
+                    (click)="toggleLocationDropdown($event)" 
+                    [disabled]="isLoading">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+              <span class="location-selector-text compact-text">
+                {{ selectedLocationPath }}
+              </span>
               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
-            <button class="btn-icon-cancel compact-icon-btn" (click)="selectedStore = ''" title="Cancel" [disabled]="isLoading">
-              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+            
+            <!-- Location Tree Dropdown -->
+            <div class="location-tree-dropdown" 
+                 [class.show]="showLocationDropdown"
+                 (click)="$event.stopPropagation()"
+                 (mouseenter)="isLocationHovered = true"
+                 (mouseleave)="isLocationHovered = false">
+              <div class="location-dropdown-header">
+                <h4 class="compact-dropdown-title">Select Location</h4>
+                <button class="location-dropdown-close" (click)="showLocationDropdown = false">×</button>
+              </div>
+              
+              <div class="location-tree">
+                <!-- All Locations -->
+                <div class="location-tree-node level-0" 
+                     [class.has-children]="false"
+                     [class.selected]="selectedStore === 'All'"
+                     (click)="selectLocation(locationTree[0], $event)">
+                  <div class="location-node-content">
+                    <div class="location-node-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                      </svg>
+                    </div>
+                    <span class="location-node-name">{{ locationTree[0].name }}</span>
+                  </div>
+                </div>
+                
+                <!-- CTK -->
+                <div class="location-tree-node level-0" 
+                     [class.has-children]="false"
+                     [class.selected]="selectedStore === 'CTK'"
+                     (click)="selectLocation(locationTree[1], $event)">
+                  <div class="location-node-content">
+                    <div class="location-node-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                      </svg>
+                    </div>
+                    <span class="location-node-name">{{ locationTree[1].name }}</span>
+                  </div>
+                </div>
+                
+                <!-- CSCNQ -->
+                <div class="location-tree-node level-0" 
+                     [class.has-children]="true"
+                     [class.expanded]="locationTree[2].expanded">
+                  <div class="location-node-content" (click)="toggleLocationExpand(locationTree[2], $event)">
+                    <div class="location-node-icon">
+                      <svg *ngIf="!locationTree[2].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                      <svg *ngIf="locationTree[2].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                    <span class="location-node-name">{{ locationTree[2].name }}</span>
+                  </div>
+                  
+                  <!-- CSCNQ Children -->
+                  <div class="location-tree-children" *ngIf="locationTree[2].expanded">
+                    <div *ngFor="let child of locationTree[2].children" 
+                         class="location-tree-node level-1" 
+                         [class.has-children]="false"
+                         [class.selected]="selectedStore === child.value"
+                         (click)="selectLocation(child, $event)">
+                      <div class="location-node-content">
+                        <div class="location-node-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                        </div>
+                        <span class="location-node-name">{{ child.name }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- ALMASOR -->
+                <div class="location-tree-node level-0" 
+                     [class.has-children]="true"
+                     [class.expanded]="locationTree[3].expanded">
+                  <div class="location-node-content" (click)="toggleLocationExpand(locationTree[3], $event)">
+                    <div class="location-node-icon">
+                      <svg *ngIf="!locationTree[3].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                      <svg *ngIf="locationTree[3].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                    <span class="location-node-name">{{ locationTree[3].name }}</span>
+                  </div>
+                  
+                  <!-- ALMASOR Children -->
+                  <div class="location-tree-children" *ngIf="locationTree[3].expanded">
+                    <div *ngFor="let child of locationTree[3].children" 
+                         class="location-tree-node level-1" 
+                         [class.has-children]="false"
+                         [class.selected]="selectedStore === child.value"
+                         (click)="selectLocation(child, $event)">
+                      <div class="location-node-content">
+                        <div class="location-node-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                        </div>
+                        <span class="location-node-name">{{ child.name }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- CN -->
+                <div class="location-tree-node level-0" 
+                     [class.has-children]="true"
+                     [class.expanded]="locationTree[4].expanded">
+                  <div class="location-node-content" (click)="toggleLocationExpand(locationTree[4], $event)">
+                    <div class="location-node-icon">
+                      <svg *ngIf="!locationTree[4].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                      <svg *ngIf="locationTree[4].expanded" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                    <span class="location-node-name">{{ locationTree[4].name }}</span>
+                  </div>
+                  
+                  <!-- CN Children -->
+                  <div class="location-tree-children" *ngIf="locationTree[4].expanded">
+                    <div *ngFor="let child of locationTree[4].children" 
+                         class="location-tree-node level-1" 
+                         [class.has-children]="false"
+                         [class.selected]="selectedStore === child.value"
+                         (click)="selectLocation(child, $event)">
+                      <div class="location-node-content">
+                        <div class="location-node-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                        </div>
+                        <span class="location-node-name">{{ child.name }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+        
+        <!-- Custom Store Input -->
+        <div *ngIf="selectedStore === 'custom'" class="custom-store-input-compact">
+          <input 
+            type="text" 
+            class="form-input compact-input"
+            [(ngModel)]="newStoreName"
+            placeholder="New store name"
+            (keyup.enter)="addCustomStore()"
+            style="width: 150px;"
+            [disabled]="isLoading"
+          >
+          <button class="btn-icon-add compact-icon-btn" (click)="addCustomStore()" title="Add" [disabled]="isLoading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button class="btn-icon-cancel compact-icon-btn" (click)="selectedStore = ''" title="Cancel" [disabled]="isLoading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -276,19 +452,19 @@
     <div *ngIf="!selectedStore || selectedStore === 'custom'" class="empty-state compact-empty">
       <div style="text-align: center; padding: 40px;">
         <div style="font-size: 32px; margin-bottom: 12px; color: #9ca3af;">🏪</div>
-        <h3 style="color: #374151; margin-bottom: 8px; font-size: 14px;">Select a Store</h3>
+        <h3 style="color: #374151; margin-bottom: 8px; font-size: 14px;">Select a Location</h3>
         <p style="color: #6b7280; max-width: 500px; margin: 0 auto; font-size: 12px;">
-          Choose a store from the dropdown to view and manage its production data.
+          Choose a location from the tree dropdown to view and manage its production data.
         </p>
         <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 600px; margin: 12px auto 0;">
-          <span *ngFor="let store of allStores.slice(1, 8)" 
+          <span *ngFor="let store of ['CTK', 'FG NG', 'FG LC', 'CN LC']" 
                 class="store-option-tag compact-store-tag"
                 (click)="selectedStore = store; onStoreChange()">
             {{ store }}
           </span>
           <span class="store-option-tag all-stores-tag compact-store-tag"
                 (click)="selectedStore = 'All'; onStoreChange()">
-            📊 All
+            📊 All Locations
           </span>
         </div>
       </div>
@@ -302,14 +478,14 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
             </svg>
-            Aggregated View - All Stores - Week {{ selectedWeek?.weekNumber }}
+            Aggregated View - All Locations - Week {{ selectedWeek?.weekNumber }}
           </h3>
           <div class="aggregated-stats compact-aggregated-stats">
             <span class="stat-badge compact-stat-badge">
               <strong>{{ aggregatedData.length }}</strong> SKUs
             </span>
             <span class="stat-badge compact-stat-badge">
-              <strong>{{ allReportData.size }}</strong> Stores
+              <strong>{{ allReportData.size }}</strong> Locations
             </span>
           </div>
         </div>
@@ -322,12 +498,12 @@
                 <th style="width: 180px;">Description</th>
                 <th style="width: 50px;">UM</th>
                 <th style="width: 80px;" class="text-right">Price</th>
-                <th style="width: 80px;" class="text-right">Stores</th>
+                <th style="width: 80px;" class="text-right">Locations</th>
                 <th style="width: 90px;" class="text-right">Order</th>
                 <th style="width: 90px;" class="text-right">Delivered</th>
                 <th style="width: 90px;" class="text-right">Undel</th>
                 <th style="width: 70px;" class="text-center">Fill</th>
-                <th style="width: 150px;">Stores List</th>
+                <th style="width: 150px;">Locations List</th>
               </tr>
             </thead>
             <tbody>
@@ -336,7 +512,7 @@
                   <div style="text-align: center; padding: 30px;">
                     <div style="font-size: 24px; margin-bottom: 8px; color: #9ca3af;">📊</div>
                     <h4 style="color: #374151; margin-bottom: 4px; font-size: 14px;">No Aggregated Data</h4>
-                    <p style="color: #6b7280; font-size: 12px;">Add products to stores for this week</p>
+                    <p style="color: #6b7280; font-size: 12px;">Add products to locations for this week</p>
                   </div>
                 </td>
               </tr>
@@ -433,7 +609,7 @@
         <!-- Total Fill Rate Summary (Aggregated) -->
         <div class="total-fill-rate-summary compact-summary" *ngIf="selectedStore === 'All' && aggregatedData.length > 0">
           <div class="summary-item">
-            <span class="summary-label">Total Fill Rate (All Stores):</span>
+            <span class="summary-label">Total Fill Rate (All Locations):</span>
             <span class="summary-value" [class]="getFillRateClass(getAggregatedTotalFillRate())">
               {{ getAggregatedTotalFillRate() }}%
             </span>
@@ -454,7 +630,7 @@
       </div>
     </div>
 
-    <!-- Single Store View -->
+    <!-- Single Location View -->
     <div *ngIf="selectedStore && selectedStore !== 'custom' && selectedStore !== 'All' && !isLoading">
       <div class="table-container">
         <table class="materials-table compact-table">
@@ -604,7 +780,7 @@
         </div>
       </div>
 
-      <!-- Total Fill Rate Summary (Single Store) -->
+      <!-- Total Fill Rate Summary (Single Location) -->
       <div class="total-fill-rate-summary compact-summary" *ngIf="selectedStore && selectedStore !== 'custom' && selectedStore !== 'All' && getCurrentStoreData().length > 0">
         <div class="summary-item">
           <span class="summary-label">Total Fill Rate:</span>
@@ -612,12 +788,7 @@
             {{ getTotalFillRate() }}%
           </span>
         </div>
-        <div class="summary-item">
-          <span class="summary-label">Avg Fill Rate:</span>
-          <span class="summary-value" [class]="getFillRateClass(getAverageFillRate())">
-            {{ getAverageFillRate() }}%
-          </span>
-        </div>
+
         <div class="summary-item">
           <span class="summary-label">SKUs with Fill Rate &lt; 70%:</span>
           <span class="summary-value low">
@@ -639,8 +810,8 @@
       <div class="modal-body compact-modal-body">
         <form (ngSubmit)="saveProduct()" #form="ngForm">
           <div class="form-group compact-form-group">
-            <label class="compact-label">Store</label>
-            <div class="form-input-static compact-static">{{ selectedStore }}</div>
+            <label class="compact-label">Location</label>
+            <div class="form-input-static compact-static">{{ getLocationDisplayName() }}</div>
           </div>
           
           <div class="form-group compact-form-group">
@@ -746,4 +917,7 @@
 
   <!-- Week Dropdown Overlay -->
   <div class="week-dropdown-overlay" *ngIf="showWeekSelector" (click)="showWeekSelector = false"></div>
+  
+  <!-- Location Dropdown Overlay -->
+  <div class="location-dropdown-overlay" *ngIf="showLocationDropdown" (click)="showLocationDropdown = false"></div>
 </div>

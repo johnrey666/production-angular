@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
@@ -17,10 +17,10 @@ interface ReportItem {
   undelivered: number;
   fillRate: number;
   remarks: string;
-  weekStartDate: string; // Added: Start date of the week (YYYY-MM-DD)
-  weekEndDate: string;   // Added: End date of the week (YYYY-MM-DD)
-  weekNumber: number;    // Added: Week number (1-52/53)
-  year: number;          // Added: Year
+  weekStartDate: string;
+  weekEndDate: string;
+  weekNumber: number;
+  year: number;
   created_at?: string;
 }
 
@@ -81,6 +81,14 @@ interface SkuCatalogItem {
   type?: string;
 }
 
+interface LocationNode {
+  name: string;
+  value: string;
+  children?: LocationNode[];
+  level: number;
+  expanded?: boolean;
+}
+
 @Component({
   selector: 'app-reports',
   standalone: true,
@@ -92,28 +100,100 @@ export class ReportsComponent implements OnInit {
   // Store management
   selectedStore: string = '';
   newStoreName: string = '';
-  predefinedStores: string[] = [
-    'DRG-FG EXP',
-    'MBT-FG EXP', 
-    'PIO-FG EXP',
-    'IRO-FG EXP',
-    'TA-FTG',
-    'LC-FTG',
-    'LC-FG',
-    'NG-FG',
-    'LC-CN',
-    'LC-CN Hall',
-    'TA-CN'
+  
+  // Location tree structure
+  locationTree: LocationNode[] = [
+    {
+      name: 'All Locations',
+      value: 'All',
+      level: 0,
+      expanded: false
+    },
+    {
+      name: 'CTK',
+      value: 'CTK',
+      level: 0,
+      expanded: false
+    },
+    {
+      name: 'CSCNQ',
+      value: 'CSCNQ',
+      level: 0,
+      expanded: false,
+      children: [
+        { name: 'FG NG', value: 'FG NG', level: 1 },
+        { name: 'FG BAAO', value: 'FG BAAO', level: 1 }
+      ]
+    },
+    {
+      name: 'ALMASOR',
+      value: 'ALMASOR',
+      level: 0,
+      expanded: false,
+      children: [
+        { name: 'FG LC', value: 'FG LC', level: 1 },
+        { name: 'FGE IRS', value: 'FGE IRS', level: 1 },
+        { name: 'FGE SoR RZL', value: 'FGE SoR RZL', level: 1 },
+        { name: 'FGE MBT', value: 'FGE MBT', level: 1 },
+        { name: 'FGE DRG', value: 'FGE DRG', level: 1 },
+        { name: 'FGE LTC', value: 'FGE LTC', level: 1 },
+        { name: 'FGE PLG2', value: 'FGE PLG2', level: 1 },
+        { name: 'FGE PIO', value: 'FGE PIO', level: 1 },
+        { name: 'FTG LC', value: 'FTG LC', level: 1 },
+        { name: 'FTG TA', value: 'FTG TA', level: 1 }
+      ]
+    },
+    {
+      name: 'CN',
+      value: 'CN',
+      level: 0,
+      expanded: false,
+      children: [
+        { name: 'CN LC', value: 'CN LC', level: 1 },
+        { name: 'CN HALL', value: 'CN HALL', level: 1 },
+        { name: 'CN TA', value: 'CN TA', level: 1 }
+      ]
+    }
   ];
+  
+  // Flattened store list for compatibility
+  predefinedStores: string[] = [
+    'All',
+    'CTK',
+    'CSCNQ',
+    'FG NG',
+    'FG BAAO',
+    'ALMASOR',
+    'FG LC',
+    'FGE IRS',
+    'FGE SoR RZL',
+    'FGE MBT',
+    'FGE DRG',
+    'FGE LTC',
+    'FGE PLG2',
+    'FGE PIO',
+    'FTG LC',
+    'FTG TA',
+    'CN',
+    'CN LC',
+    'CN HALL',
+    'CN TA'
+  ];
+  
   customStores: string[] = [];
-  allStores: string[] = ['All', ...this.predefinedStores];
+  allStores: string[] = ['All', ...this.predefinedStores.filter(s => s !== 'All')];
+  
+  // UI state for location dropdown
+  showLocationDropdown = false;
+  selectedLocationPath: string = 'Select Location';
+  isLocationHovered = false;
   
   // Week management
   selectedWeek: WeekOption | null = null;
   availableWeeks: WeekOption[] = [];
   showWeekSelector = false;
   
-  // Date range for current week (if no week selected)
+  // Date range for current week
   currentWeekStartDate: string;
   currentWeekEndDate: string;
   currentWeekNumber: number;
@@ -128,9 +208,9 @@ export class ReportsComponent implements OnInit {
     'Others'
   ];
   
-  // Data management - FIXED: Separate original data from filtered data
-  originalReportData: Map<string, ReportItem[]> = new Map(); // NEW: Stores ALL data from database
-  allReportData: Map<string, ReportItem[]> = new Map();      // Currently filtered data (by week)
+  // Data management
+  originalReportData: Map<string, ReportItem[]> = new Map();
+  allReportData: Map<string, ReportItem[]> = new Map();
   displayedData: ReportItem[] = [];
   aggregatedData: AggregatedItem[] = [];
   displayedAggregatedData: AggregatedItem[] = [];
@@ -196,6 +276,70 @@ export class ReportsComponent implements OnInit {
     });
   }
 
+  // Location dropdown methods
+  toggleLocationDropdown(event: Event) {
+    event.stopPropagation();
+    this.showLocationDropdown = !this.showLocationDropdown;
+    this.showWeekSelector = false; // Close week selector if open
+  }
+
+  selectLocation(node: LocationNode, event: Event) {
+    event.stopPropagation();
+    
+    // If it has children, toggle expand/collapse
+    if (node.children && node.children.length > 0) {
+      node.expanded = !node.expanded;
+      this.cdr.detectChanges();
+    } else {
+      // If it's a leaf node, select it
+      this.selectedStore = node.value;
+      this.selectedLocationPath = this.getLocationDisplayName();
+      this.showLocationDropdown = false;
+      this.onStoreChange();
+    }
+  }
+
+  toggleLocationExpand(node: LocationNode, event: Event) {
+    event.stopPropagation();
+    if (node.children && node.children.length > 0) {
+      node.expanded = !node.expanded;
+    }
+  }
+
+  getLocationDisplayName(): string {
+    if (!this.selectedStore) return 'Select Location';
+    if (this.selectedStore === 'All') return 'All Locations';
+    
+    // Find the node in the tree
+    const node = this.findNodeInTree(this.selectedStore);
+    return node ? node.name : this.selectedStore;
+  }
+
+  findNodeInTree(value: string): LocationNode | null {
+    const search = (nodes: LocationNode[]): LocationNode | null => {
+      for (const node of nodes) {
+        if (node.value === value) return node;
+        if (node.children) {
+          const found = search(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return search(this.locationTree);
+  }
+
+  // Close dropdowns when clicking outside
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: Event) {
+    if (!this.isLocationHovered && this.showLocationDropdown) {
+      this.showLocationDropdown = false;
+    }
+    if (this.showWeekSelector) {
+      this.showWeekSelector = false;
+    }
+  }
+
   // SKU catalog loader
   async loadSkuCatalog() {
     this.isLoadingCatalog = true;
@@ -207,7 +351,6 @@ export class ReportsComponent implements OnInit {
 
       if (error) {
         console.error('Error loading SKU catalog:', error);
-        // If table doesn't exist, create it (best-effort) and seed defaults
         if (error.code === '42P01') {
           this.showSnackbar('SKU catalog table not found. Creating it (local seed)...', 'info');
           await this.createSkuCatalogTable();
@@ -228,14 +371,11 @@ export class ReportsComponent implements OnInit {
   }
 
   async createSkuCatalogTable() {
-    // Best-effort informational stub. Creating DB objects programmatically
-    // is environment-specific; we seed local catalog instead.
     console.log('createSkuCatalogTable: called (stub)');
     this.showSnackbar('Created SKU catalog (local seed)', 'info');
   }
 
   async insertDefaultSkus() {
-    // Seed a small set of SKUs locally so UI is usable even without DB
     this.skuCatalog = [
       { sku: '4362771', description: 'AJI Umami Seasoning 2.5kg×8', um: 'kg', price: 459.99, type: 'Seasoning' },
       { sku: '3498918', description: 'Pork Belly Skinless', um: 'kg', price: 310, type: 'Pork' },
@@ -276,12 +416,11 @@ export class ReportsComponent implements OnInit {
     }
 
     this.isInitializing = true;
-    this.isLoading = true; // Also set main loading to disable UI
+    this.isLoading = true;
     this.loadingMessage = 'Initializing week with all SKUs...';
     this.loadingProgress = '0%';
     
     try {
-      // Create local entries and save to database
       const storeData = this.allReportData.get(this.selectedStore) || [];
       const originalStoreData = this.originalReportData.get(this.selectedStore) || [];
       
@@ -290,7 +429,6 @@ export class ReportsComponent implements OnInit {
       let insertedCount = 0;
       let skippedCount = 0;
       
-      // Process SKUs in batches to avoid overwhelming the database
       const batchSize = 10;
       for (let i = 0; i < totalSkus; i += batchSize) {
         const batch = this.skuCatalog.slice(i, i + batchSize);
@@ -298,12 +436,10 @@ export class ReportsComponent implements OnInit {
         for (const skuItem of batch) {
           processedCount++;
           
-          // Update progress
           const progressPercentage = Math.round((processedCount / totalSkus) * 100);
           this.loadingProgress = `${progressPercentage}% (${processedCount}/${totalSkus})`;
-          this.cdr.detectChanges(); // Force UI update
+          this.cdr.detectChanges();
           
-          // Check if SKU already exists for this week
           const exists = storeData.some(p => p.sku === skuItem.sku && p.weekStartDate === this.selectedWeek!.weekStartDate && p.weekEndDate === this.selectedWeek!.weekEndDate);
           if (exists) {
             skippedCount++;
@@ -329,7 +465,6 @@ export class ReportsComponent implements OnInit {
           };
           
           try {
-            // Save to database
             const savedItem = await this.saveToDatabase(newItem);
             if (savedItem) {
               storeData.push(savedItem);
@@ -338,11 +473,9 @@ export class ReportsComponent implements OnInit {
             }
           } catch (error) {
             console.error(`Error inserting SKU ${skuItem.sku}:`, error);
-            // Continue with next SKU even if one fails
           }
         }
         
-        // Small delay between batches to avoid rate limiting
         if (i + batchSize < totalSkus) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
@@ -383,22 +516,127 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Helper method to get current week info
+  // Clear All Locations Data for Selected Week - FIXED VERSION
+  async clearAllLocationsData() {
+    if (!this.selectedWeek) {
+      this.showSnackbar('Please select a week first', 'warning');
+      return;
+    }
+
+    const message = `🚨 CLEAR ALL DATA FOR ALL LOCATIONS\n\n` +
+      `Week: ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year}\n` +
+      `Date Range: ${this.formatDate(this.selectedWeek.weekStartDate)} - ${this.formatDate(this.selectedWeek.weekEndDate)}\n\n` +
+      `⚠️  This will permanently delete ALL production data for ALL locations for this week.\n` +
+      `⚠️  This action cannot be undone!\n\n` +
+      `Type "DELETE ALL" to confirm:`;
+
+    const confirmation = prompt(message);
+    
+    if (confirmation !== 'DELETE ALL') {
+      this.showSnackbar('Clear all operation cancelled', 'info');
+      return;
+    }
+
+    // Double confirmation
+    if (!confirm('LAST CONFIRMATION!\nAre you absolutely sure you want to delete ALL data for ALL locations?')) {
+      return;
+    }
+
+    this.isLoading = true;
+    this.loadingMessage = 'Clearing all locations data...';
+    this.cdr.detectChanges();
+    
+    try {
+      // Delete all data for the selected week from database
+      const { error } = await this.supabase['supabase']
+        .from('production_reports')
+        .delete()
+        .eq('week_start_date', this.selectedWeek.weekStartDate)
+        .eq('week_end_date', this.selectedWeek.weekEndDate);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(`Successfully deleted data for week ${this.selectedWeek.weekNumber}`);
+
+      // Create new maps to avoid reference issues
+      const newOriginalData = new Map<string, ReportItem[]>();
+      const newAllReportData = new Map<string, ReportItem[]>();
+      
+      // Filter out items for the selected week from original data
+      this.originalReportData.forEach((storeItems, storeName) => {
+        const remainingItems = storeItems.filter(item => 
+          item.weekStartDate !== this.selectedWeek!.weekStartDate ||
+          item.weekEndDate !== this.selectedWeek!.weekEndDate
+        );
+        
+        newOriginalData.set(storeName, remainingItems);
+        newAllReportData.set(storeName, []);
+      });
+      
+      // Update the main data structures
+      this.originalReportData = newOriginalData;
+      this.allReportData = newAllReportData;
+
+      // Clear aggregated data
+      this.aggregatedData = [];
+      this.displayedAggregatedData = [];
+      this.filteredAggregatedData = [];
+      
+      // Clear displayed data
+      this.displayedData = [];
+      this.filteredStoreData = [];
+      
+      // Reset pagination
+      this.currentPage = 1;
+      this.totalPages = 1;
+      this.startIndex = 0;
+      this.endIndex = 0;
+
+      // Force UI update
+      this.cdr.detectChanges();
+
+      // Show success message
+      this.showSnackbar(
+        `✅ Successfully cleared ALL data for Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year}`,
+        'success'
+      );
+
+      // Reload current view based on selection
+      if (this.selectedStore === 'All') {
+        this.calculateAggregatedData();
+        this.applyAggregatedFilters();
+      } else if (this.selectedStore && this.selectedStore !== 'custom') {
+        this.loadStoreData();
+        this.applyFiltersAndSearch();
+      }
+
+    } catch (error: any) {
+      console.error('Error clearing all locations data:', error);
+      this.showSnackbar(
+        `❌ Failed to clear all locations data: ${error?.message || String(error)}`,
+        'error'
+      );
+    } finally {
+      this.isLoading = false;
+      this.loadingMessage = '';
+      this.cdr.detectChanges();
+    }
+  }
+
   getCurrentWeek(): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
     const today = new Date();
     const year = today.getFullYear();
     
-    // Get start of week (Monday)
     const startOfWeek = new Date(today);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
     startOfWeek.setDate(diff);
     
-    // Get end of week (Sunday)
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    // Get week number (ISO week number)
     const firstDayOfYear = new Date(year, 0, 1);
     const pastDaysOfYear = (today.getTime() - firstDayOfYear.getTime()) / 86400000;
     const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
@@ -411,7 +649,6 @@ export class ReportsComponent implements OnInit {
     };
   }
 
-  // Format date for display
   formatDate(dateString: string): string {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -422,13 +659,11 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  // Generate weeks for selector (last 12 weeks + future 4 weeks)
   generateWeekOptions() {
     const weeks: WeekOption[] = [];
     const today = new Date();
     const currentWeek = this.getCurrentWeek();
     
-    // Add current week
     weeks.push({
       label: `Current Week: ${this.formatDate(currentWeek.weekStartDate)} - ${this.formatDate(currentWeek.weekEndDate)}`,
       weekStartDate: currentWeek.weekStartDate,
@@ -437,7 +672,6 @@ export class ReportsComponent implements OnInit {
       year: currentWeek.year
     });
     
-    // Add past 12 weeks
     for (let i = 1; i <= 12; i++) {
       const date = new Date(currentWeek.weekStartDate);
       date.setDate(date.getDate() - (i * 7));
@@ -452,7 +686,6 @@ export class ReportsComponent implements OnInit {
       });
     }
     
-    // Add future 4 weeks
     for (let i = 1; i <= 4; i++) {
       const date = new Date(currentWeek.weekStartDate);
       date.setDate(date.getDate() + (i * 7));
@@ -470,21 +703,17 @@ export class ReportsComponent implements OnInit {
     this.availableWeeks = weeks;
   }
 
-  // Get week info for a specific date
   getWeekForDate(date: Date): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
     const year = date.getFullYear();
     
-    // Get start of week (Monday)
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
     startOfWeek.setDate(diff);
     
-    // Get end of week (Sunday)
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    // Get week number
     const firstDayOfYear = new Date(year, 0, 1);
     const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
     const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
@@ -510,7 +739,6 @@ export class ReportsComponent implements OnInit {
       if (error) {
         console.error('Error fetching data:', error);
         
-        // Handle specific error codes
         if (error.code === 'PGRST204') {
           this.showSnackbar(
             'Database schema cache needs refresh. Please wait 30 seconds and try again.',
@@ -525,9 +753,8 @@ export class ReportsComponent implements OnInit {
       }
       
       if (data && data.length > 0) {
-        // Clear existing data
-        this.originalReportData.clear(); // NEW: Clear original data
-        this.allReportData.clear();      // Clear filtered data
+        this.originalReportData.clear();
+        this.allReportData.clear();
         this.aggregatedData = [];
         this.displayedAggregatedData = [];
         
@@ -535,13 +762,11 @@ export class ReportsComponent implements OnInit {
           const localItem = this.fromDatabaseFormat(dbItem);
           const store = localItem.store;
           
-          // Add to original data (all weeks)
           if (!this.originalReportData.has(store)) {
             this.originalReportData.set(store, []);
           }
           this.originalReportData.get(store)!.push(localItem);
           
-          // Add store to custom stores if it's not predefined
           if (!this.predefinedStores.includes(store) && !this.customStores.includes(store)) {
             this.customStores.push(store);
             if (!this.allStores.includes(store)) {
@@ -550,15 +775,11 @@ export class ReportsComponent implements OnInit {
           }
         });
         
-        // Sort stores alphabetically (except 'All')
         const storesWithoutAll = this.allStores.filter(s => s !== 'All');
         storesWithoutAll.sort();
         this.allStores = ['All', ...storesWithoutAll];
         
-        // Generate week options based on available data
         this.generateWeekOptions();
-        
-        // Filter data for selected week (from original data)
         this.filterDataByWeek();
         
         this.showSnackbar(`Loaded ${data.length} production items across ${this.originalReportData.size} stores`, 'success');
@@ -577,13 +798,10 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Filter data by selected week - FIXED: Now filters from original data
   filterDataByWeek() {
     if (!this.selectedWeek) {
-      // If no week selected, show all data from original
       this.allReportData = new Map(this.originalReportData);
     } else {
-      // Filter original data by week into allReportData
       const filteredData = new Map<string, ReportItem[]>();
       
       this.originalReportData.forEach((storeItems, storeName) => {
@@ -595,7 +813,6 @@ export class ReportsComponent implements OnInit {
         if (weekItems.length > 0) {
           filteredData.set(storeName, weekItems);
         } else {
-          // Keep store in map with empty array if no items for this week
           filteredData.set(storeName, []);
         }
       });
@@ -603,7 +820,6 @@ export class ReportsComponent implements OnInit {
       this.allReportData = filteredData;
     }
     
-    // Refresh view based on current selection
     if (this.selectedStore === 'All') {
       this.loadAggregatedData();
     } else if (this.selectedStore && this.selectedStore !== 'custom') {
@@ -613,11 +829,13 @@ export class ReportsComponent implements OnInit {
 
   onWeekChange(week: WeekOption) {
     this.selectedWeek = week;
-    this.filterDataByWeek(); // This now filters from original data
+    this.filterDataByWeek();
     this.showWeekSelector = false;
   }
 
   onStoreChange() {
+    this.selectedLocationPath = this.getLocationDisplayName();
+    
     if (this.selectedStore === 'custom') {
       this.newStoreName = '';
       this.showAggregatedView = false;
@@ -651,11 +869,9 @@ export class ReportsComponent implements OnInit {
   calculateAggregatedData() {
     const skuMap = new Map<string, AggregatedItem>();
     
-    // Collect all data from all stores for the selected week
     this.allReportData.forEach((storeItems, storeName) => {
       storeItems.forEach(item => {
         if (!skuMap.has(item.sku)) {
-          // Create new aggregated item
           skuMap.set(item.sku, {
             sku: item.sku,
             description: item.description,
@@ -682,19 +898,16 @@ export class ReportsComponent implements OnInit {
         aggregatedItem.totalUndelivered += item.undelivered;
         aggregatedItem.storeCount++;
         
-        // Add store to list if not already there
         if (!aggregatedItem.stores.includes(storeName)) {
           aggregatedItem.stores.push(storeName);
         }
         
-        // Update remarks based on the most recent store's remarks
         if (item.remarks) {
           aggregatedItem.remarks = item.remarks;
         }
       });
     });
     
-    // Calculate fill rate for each aggregated item
     skuMap.forEach(item => {
       if (item.totalStoreOrder > 0) {
         item.fillRate = Math.round((item.totalDelivered / item.totalStoreOrder) * 100);
@@ -702,7 +915,6 @@ export class ReportsComponent implements OnInit {
         item.fillRate = 0;
       }
       
-      // Set remarks based on aggregated fill rate
       if (item.fillRate >= 95) item.remarks = 'Excellent';
       else if (item.fillRate >= 85) item.remarks = 'Good';
       else if (item.fillRate >= 70) item.remarks = 'Fair';
@@ -710,7 +922,6 @@ export class ReportsComponent implements OnInit {
       else item.remarks = '';
     });
     
-    // Convert map to array and sort
     this.aggregatedData = Array.from(skuMap.values())
       .sort((a, b) => a.sku.localeCompare(b.sku));
     this.filteredAggregatedData = [...this.aggregatedData];
@@ -741,7 +952,6 @@ export class ReportsComponent implements OnInit {
     this.selectedStore = storeName;
     this.newStoreName = '';
     
-    // Initialize empty data for new store in both maps
     this.originalReportData.set(storeName, []);
     this.allReportData.set(storeName, []);
     
@@ -790,7 +1000,6 @@ export class ReportsComponent implements OnInit {
       year: localItem.year
     };
     
-    // Only include id if it exists (for updates)
     if (localItem.id) {
       dbItem.id = localItem.id;
     }
@@ -816,7 +1025,6 @@ export class ReportsComponent implements OnInit {
       let result;
       
       if (item.id) {
-        // Update existing
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .update(dbItem)
@@ -834,7 +1042,6 @@ export class ReportsComponent implements OnInit {
         }
         result = data;
       } else {
-        // Insert new
         const { data, error } = await this.supabase['supabase']
           .from('production_reports')
           .insert([dbItem])
@@ -861,31 +1068,29 @@ export class ReportsComponent implements OnInit {
     } catch (error: any) {
       console.error('Error saving to database:', error);
       
-      // Show specific error messages
       if (error.code === 'PGRST204') {
         this.showSnackbar(
           'Database schema cache issue. Please refresh page in 30 seconds.',
           'warning'
         );
-      } else if (error.code === '23505') { // Unique violation
-        // Don't show error for duplicates during initialization
+      } else if (error.code === '23505') {
         if (!this.isInitializing) {
           this.showSnackbar(
             `Product "${item.sku}" already exists for this store and week.`,
             'error'
           );
         }
-      } else if (error.code === '23502') { // Not null violation
+      } else if (error.code === '23502') {
         this.showSnackbar(
           'Database error: Required fields missing.',
           'error'
         );
-      } else if (error.code === '42P01') { // Table doesn't exist
+      } else if (error.code === '42P01') {
         this.showSnackbar(
           'Production reports table not found. Please create it in Supabase.',
           'error'
         );
-      } else if (!this.isInitializing) { // Only show generic error if not initializing
+      } else if (!this.isInitializing) {
         this.showSnackbar(
           `Database error: ${error.message || 'Unknown error'}`,
           'error'
@@ -918,7 +1123,6 @@ export class ReportsComponent implements OnInit {
         .delete()
         .eq('store', storeName);
       
-      // If week dates are provided, delete only for that week
       if (weekStartDate && weekEndDate) {
         query = query
           .eq('week_start_date', weekStartDate)
@@ -974,7 +1178,6 @@ export class ReportsComponent implements OnInit {
   }
 
   updatePagination() {
-    // Reset to page 1 when filtering (if search query exists)
     if (this.searchQuery.trim()) {
       this.currentPage = 1;
     }
@@ -995,7 +1198,6 @@ export class ReportsComponent implements OnInit {
   }
 
   updateAggregatedPagination() {
-    // Reset to page 1 when filtering (if search query exists)
     if (this.searchQuery.trim()) {
       this.currentPage = 1;
     }
@@ -1060,7 +1262,6 @@ export class ReportsComponent implements OnInit {
   }
 
   async calculateRow(item: ReportItem) {
-    // Calculate values
     item.undelivered = parseFloat((item.storeOrder - item.delivered).toFixed(1));
     
     if (item.storeOrder > 0) {
@@ -1079,19 +1280,16 @@ export class ReportsComponent implements OnInit {
       item.fillRate = 100;
     }
     
-    // Update remarks based on fill rate
     if (item.fillRate >= 95) item.remarks = 'Excellent';
     else if (item.fillRate >= 85) item.remarks = 'Good';
     else if (item.fillRate >= 70) item.remarks = 'Fair';
     else if (item.fillRate > 0) item.remarks = 'Needs Attention';
     else item.remarks = '';
     
-    // Save changes to database (only if item has an ID)
     if (item.id) {
       try {
         const savedItem = await this.saveToDatabase(item);
         if (savedItem) {
-          // Update in original data store
           this.updateItemInOriginalData(savedItem);
         }
       } catch (error: any) {
@@ -1101,7 +1299,6 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Helper method to update item in original data store
   private updateItemInOriginalData(updatedItem: ReportItem) {
     const store = updatedItem.store;
     const originalStoreData = this.originalReportData.get(store);
@@ -1167,7 +1364,6 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    // Validate SKU format (alphanumeric with optional hyphens)
     const skuRegex = /^[A-Za-z0-9\-]+$/;
     if (!skuRegex.test(this.currentProduct.sku.trim())) {
       this.showSnackbar('SKU can only contain letters, numbers, and hyphens', 'warning');
@@ -1175,7 +1371,6 @@ export class ReportsComponent implements OnInit {
     }
 
     try {
-      // Save to database
       const savedItem = await this.saveToDatabase(this.currentProduct);
       
       if (!savedItem) {
@@ -1183,18 +1378,15 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      // Update BOTH data stores: original and filtered
       const originalStoreData = this.originalReportData.get(this.selectedStore) || [];
       const filteredStoreData = this.allReportData.get(this.selectedStore) || [];
       
       if (this.isEditing) {
-        // Update in original data
         const origIndex = originalStoreData.findIndex(p => p.id === savedItem.id);
         if (origIndex !== -1) {
           originalStoreData[origIndex] = savedItem;
         }
         
-        // Update in filtered data (if it exists there)
         const filtIndex = filteredStoreData.findIndex(p => p.id === savedItem.id);
         if (filtIndex !== -1) {
           filteredStoreData[filtIndex] = savedItem;
@@ -1205,7 +1397,6 @@ export class ReportsComponent implements OnInit {
         
         this.showSnackbar(`Product "${savedItem.sku}" updated successfully`, 'success');
       } else {
-        // Check for duplicate SKU in original data for the same week
         if (originalStoreData.some(p => p.sku === savedItem.sku && 
             p.weekStartDate === savedItem.weekStartDate && 
             p.weekEndDate === savedItem.weekEndDate)) {
@@ -1213,11 +1404,9 @@ export class ReportsComponent implements OnInit {
           return;
         }
         
-        // Add to original data
         originalStoreData.unshift(savedItem);
         this.originalReportData.set(this.selectedStore, originalStoreData);
         
-        // Add to filtered data (if it matches current week filter)
         if (this.selectedWeek && 
             savedItem.weekStartDate === this.selectedWeek.weekStartDate &&
             savedItem.weekEndDate === this.selectedWeek.weekEndDate) {
@@ -1228,7 +1417,6 @@ export class ReportsComponent implements OnInit {
         this.showSnackbar(`Product "${savedItem.sku}" added successfully to ${this.selectedStore}`, 'success');
       }
 
-      // Refresh the appropriate view
       if (this.selectedStore === 'All') {
         this.loadAggregatedData();
       } else {
@@ -1239,7 +1427,7 @@ export class ReportsComponent implements OnInit {
     } catch (error: any) {
       console.error('Error saving product:', error);
       
-      if (error.code === '23505') { // Unique constraint violation
+      if (error.code === '23505') {
         this.showSnackbar(`Product with SKU "${this.currentProduct.sku}" already exists in database for this week`, 'error');
       } else {
         this.showSnackbar('Failed to save product: ' + error.message, 'error');
@@ -1256,7 +1444,6 @@ export class ReportsComponent implements OnInit {
     }
 
     try {
-      // Delete from database
       const success = await this.deleteFromDatabase(product.id);
       
       if (!success) {
@@ -1264,15 +1451,12 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      // Remove from BOTH data stores
       let originalStoreData = this.originalReportData.get(this.selectedStore) || [];
       let filteredStoreData = this.allReportData.get(this.selectedStore) || [];
       
-      // Remove from original data (permanent storage)
       originalStoreData = originalStoreData.filter(p => p.id !== product.id);
       this.originalReportData.set(this.selectedStore, originalStoreData);
       
-      // Remove from filtered data (current view)
       filteredStoreData = filteredStoreData.filter(p => p.id !== product.id);
       this.allReportData.set(this.selectedStore, filteredStoreData);
       
@@ -1305,10 +1489,14 @@ export class ReportsComponent implements OnInit {
     }
     
     if (prompt('Type CLEAR to confirm:') !== 'CLEAR') {
+      this.showSnackbar('Clear operation cancelled', 'info');
       return;
     }
 
     this.isLoading = true;
+    this.loadingMessage = `Clearing data for ${this.selectedStore}...`;
+    this.cdr.detectChanges();
+    
     try {
       const success = await this.clearStoreFromDatabase(
         this.selectedStore, 
@@ -1317,10 +1505,10 @@ export class ReportsComponent implements OnInit {
       );
       
       if (success) {
-        // Clear from filtered data
+        // Clear from allReportData
         this.allReportData.set(this.selectedStore, []);
         
-        // Also clear from original data for the specific week
+        // Clear from originalReportData for the selected week
         if (this.selectedWeek) {
           const originalItems = this.originalReportData.get(this.selectedStore) || [];
           const remainingItems = originalItems.filter(item => 
@@ -1329,20 +1517,37 @@ export class ReportsComponent implements OnInit {
           );
           this.originalReportData.set(this.selectedStore, remainingItems);
         } else {
-          // Clear all if no week selected
           this.originalReportData.set(this.selectedStore, []);
         }
         
+        // Clear displayed data
+        this.displayedData = [];
+        this.filteredStoreData = [];
+        
+        // Reset pagination
+        this.currentPage = 1;
+        this.totalPages = 1;
+        this.startIndex = 0;
+        this.endIndex = 0;
+        
+        // Force UI update
+        this.cdr.detectChanges();
+        
+        // Reload store data
         this.loadStoreData();
-        this.showSnackbar(`All production data cleared for ${this.selectedStore}`, 'error');
+        this.applyFiltersAndSearch();
+        
+        this.showSnackbar(`✅ All production data cleared for ${this.selectedStore}`, 'success');
       } else {
-        this.showSnackbar('Failed to clear store data from database', 'error');
+        this.showSnackbar('❌ Failed to clear store data from database', 'error');
       }
     } catch (error: any) {
       console.error('Error clearing store data:', error);
-      this.showSnackbar('Failed to clear store data: ' + (error?.message || String(error)), 'error');
+      this.showSnackbar(`❌ Failed to clear store data: ${error?.message || String(error)}`, 'error');
     } finally {
       this.isLoading = false;
+      this.loadingMessage = '';
+      this.cdr.detectChanges();
     }
   }
 
@@ -1507,7 +1712,6 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Method to copy previous week's data
   async copyFromPreviousWeek() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -1519,12 +1723,10 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    // Calculate previous week
     const prevWeekDate = new Date(this.selectedWeek.weekStartDate);
     prevWeekDate.setDate(prevWeekDate.getDate() - 7);
     const prevWeek = this.getWeekForDate(prevWeekDate);
 
-    // Load previous week's data from database
     this.isLoading = true;
     this.loadingMessage = 'Copying data from previous week...';
     try {
@@ -1546,34 +1748,28 @@ export class ReportsComponent implements OnInit {
         return;
       }
 
-      // Copy data to current week
       const newItems = data.map(dbItem => {
         const localItem = this.fromDatabaseFormat(dbItem);
-        // Update week info
         localItem.weekStartDate = this.selectedWeek!.weekStartDate;
         localItem.weekEndDate = this.selectedWeek!.weekEndDate;
         localItem.weekNumber = this.selectedWeek!.weekNumber;
         localItem.year = this.selectedWeek!.year;
-        // Reset delivered and undelivered
         localItem.delivered = 0;
         localItem.undelivered = localItem.storeOrder;
         localItem.fillRate = 0;
         localItem.remarks = '';
-        // Remove id for new record
         delete localItem.id;
         delete localItem.created_at;
         
         return localItem;
       });
 
-      // Save all new items with progress
       let savedCount = 0;
       const totalItems = newItems.length;
       
       for (const item of newItems) {
         const savedItem = await this.saveToDatabase(item);
         if (savedItem) {
-          // Add to both original and filtered data stores
           let originalStoreData = this.originalReportData.get(this.selectedStore) || [];
           originalStoreData.push(savedItem);
           this.originalReportData.set(this.selectedStore, originalStoreData);
@@ -1588,7 +1784,6 @@ export class ReportsComponent implements OnInit {
         }
       }
 
-      // Reload current view
       this.loadStoreData();
       this.showSnackbar(`Copied ${savedCount} items from previous week`, 'success');
 
@@ -1602,14 +1797,12 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Test database connection method
   async testDatabaseConnection(): Promise<boolean> {
     try {
       this.showSnackbar('Testing database connection...', 'info');
       
       console.log('Testing production_reports table connection...');
       
-      // Test 1: Simple query to see if table exists
       const { data: testData, error: testError } = await this.supabase['supabase']
         .from('production_reports')
         .select('count')
@@ -1641,12 +1834,10 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Calculate total fill rate for current store (CORRECTED - excludes 0 order items)
   getTotalFillRate(): number {
     const storeData = this.getCurrentStoreData();
     if (storeData.length === 0) return 0;
     
-    // Only consider items with store order > 0
     const validItems = storeData.filter(item => item.storeOrder > 0);
     if (validItems.length === 0) return 0;
     
@@ -1657,12 +1848,10 @@ export class ReportsComponent implements OnInit {
     return Math.round((totalDelivered / totalStoreOrder) * 100);
   }
 
-  // Calculate average fill rate (simple average of valid items only)
   getAverageFillRate(): number {
     const storeData = this.getCurrentStoreData();
     if (storeData.length === 0) return 0;
     
-    // Only consider items with store order > 0
     const validItems = storeData.filter(item => item.storeOrder > 0);
     if (validItems.length === 0) return 0;
     
@@ -1670,18 +1859,15 @@ export class ReportsComponent implements OnInit {
     return Math.round(totalFillRate / validItems.length);
   }
 
-  // Count items with fill rate below 70% (only valid items)
   getLowFillRateCount(): number {
     const storeData = this.getCurrentStoreData();
     const validItems = storeData.filter(item => item.storeOrder > 0);
     return validItems.filter(item => item.fillRate < 70).length;
   }
 
-  // Calculate total fill rate for aggregated view (CORRECTED)
   getAggregatedTotalFillRate(): number {
     if (this.aggregatedData.length === 0) return 0;
     
-    // Only consider items with store order > 0
     const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
     if (validItems.length === 0) return 0;
     
@@ -1692,11 +1878,9 @@ export class ReportsComponent implements OnInit {
     return Math.round((totalDelivered / totalStoreOrder) * 100);
   }
 
-  // Calculate average fill rate for aggregated view (only valid items)
   getAggregatedAverageFillRate(): number {
     if (this.aggregatedData.length === 0) return 0;
     
-    // Only consider items with store order > 0
     const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
     if (validItems.length === 0) return 0;
     
@@ -1704,7 +1888,6 @@ export class ReportsComponent implements OnInit {
     return Math.round(totalFillRate / validItems.length);
   }
 
-  // Count aggregated items with fill rate below 70% (only valid items)
   getAggregatedLowFillRateCount(): number {
     const validItems = this.aggregatedData.filter(item => item.totalStoreOrder > 0);
     return validItems.filter(item => item.fillRate < 70).length;
