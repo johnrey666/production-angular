@@ -29,6 +29,7 @@ export class RawMaterialsComponent implements OnInit {
 
   isLoading = false;
   errorMessage = '';
+  loadingMessage = 'Loading materials...'; // Added property
 
   // Search & Filter
   searchQuery = '';
@@ -43,15 +44,22 @@ export class RawMaterialsComponent implements OnInit {
 
   // Pagination
   currentPage = 1;
-  itemsPerPage = 5;
+  itemsPerPage = 10; // Changed from 5 to match dashboard
   totalPages = 1;
   startIndex = 0;
   endIndex = 0;
+
+  // Page totals
+  pageUnitCost = 0; // Added property
+  pageCostPerKg = 0; // Added property
 
   // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
+
+  // Current date for display
+  currentDate: string = ''; // Added property
 
   private fixedCategories = [
     'Spices (Vatable)',
@@ -67,11 +75,23 @@ export class RawMaterialsComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.setCurrentDate();
     this.loadMaterials();
+  }
+
+  private setCurrentDate() {
+    const now = new Date();
+    this.currentDate = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   }
 
   async loadMaterials() {
     this.isLoading = true;
+    this.loadingMessage = 'Loading materials...';
     try {
       const data = await this.supabase.getMaterials();
       if (data && Array.isArray(data)) {
@@ -87,6 +107,7 @@ export class RawMaterialsComponent implements OnInit {
         }));
         this.allMaterials = [...this.materials];
         this.applyFiltersAndSearch();
+        this.calculatePageTotals(); // Calculate initial page totals
       }
     } catch (error: any) {
       this.errorMessage = 'Failed to load materials.';
@@ -140,7 +161,14 @@ export class RawMaterialsComponent implements OnInit {
     this.endIndex = Math.min(this.startIndex + this.itemsPerPage, this.materials.length);
     this.displayedMaterials = this.materials.slice(this.startIndex, this.endIndex);
     
+    this.calculatePageTotals(); // Recalculate totals when page changes
     this.cdr.detectChanges();
+  }
+
+  calculatePageTotals() {
+    // Calculate totals for the current displayed page
+    this.pageUnitCost = this.displayedMaterials.reduce((sum, item) => sum + (item.unitCost || 0), 0);
+    this.pageCostPerKg = this.displayedMaterials.reduce((sum, item) => sum + (item.costPerKg || 0), 0);
   }
 
   nextPage() { 
@@ -340,6 +368,7 @@ export class RawMaterialsComponent implements OnInit {
     }
 
     this.isLoading = true;
+    this.loadingMessage = 'Deleting all materials...';
     try {
       await this.supabase.deleteAllMaterials();
       
@@ -348,8 +377,10 @@ export class RawMaterialsComponent implements OnInit {
       this.materials = [];
       this.displayedMaterials = [];
       
-      // Reset pagination
+      // Reset pagination and totals
       this.currentPage = 1;
+      this.pageUnitCost = 0;
+      this.pageCostPerKg = 0;
       this.updatePagination();
       
       // Show snackbar immediately
@@ -367,6 +398,7 @@ export class RawMaterialsComponent implements OnInit {
     if (!file) return;
 
     this.isLoading = true;
+    this.loadingMessage = 'Importing materials...';
     this.cdr.detectChanges();
 
     try {
@@ -433,6 +465,12 @@ export class RawMaterialsComponent implements OnInit {
   }
 
   async refresh() {
+    this.loadingMessage = 'Refreshing materials...';
     await this.loadMaterials();
+  }
+
+  // Helper method to get material type for display
+  getMaterialType(): string {
+    return 'Raw Material';
   }
 }

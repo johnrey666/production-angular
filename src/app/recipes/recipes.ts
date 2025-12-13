@@ -1,18 +1,12 @@
-import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService, RecipeWithDetails } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
 
-interface SkuForm {
+interface RawMaterialForm {
   name: string;
-  quantity1b: number;
-  quantityhalfb: number;
-  quantityquarterb: number;
-}
-
-interface PremixForm {
-  name: string;
+  type: 'sku' | 'premix';
   quantity1b: number;
   quantityhalfb: number;
   quantityquarterb: number;
@@ -22,21 +16,31 @@ interface RecipeForm {
   id?: string;
   name: string;
   stdYield: number;
-  skus: SkuForm[];
-  premixes: PremixForm[];
+  rawMaterials: RawMaterialForm[];
+}
+
+interface CombinedMaterial {
+  name: string;
+  type: 'sku' | 'premix';
+  quantity1b: number;
+  quantityhalfb: number;
+  quantityquarterb: number;
 }
 
 @Component({
   selector: 'app-recipes',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DecimalPipe],
   templateUrl: './recipes.html',
   styleUrls: ['./recipes.css']
 })
 export class RecipesComponent implements OnInit {
   // Original arrays
-  recipes: RecipeWithDetails[] = [];           // ← This is what the table displays (filtered + paginated)
-  allRecipes: RecipeWithDetails[] = [];        // ← Full dataset from Supabase
+  recipes: RecipeWithDetails[] = [];           // Displayed recipes (filtered + paginated)
+  allRecipes: RecipeWithDetails[] = [];        // Full dataset from Supabase
+  
+  // New property for collapsible cards
+  expandedRecipeId: string | null = null;
 
   selectedRecipe: RecipeWithDetails | null = null;
   editingRecipe: RecipeForm = this.createEmptyRecipe();
@@ -45,31 +49,96 @@ export class RecipesComponent implements OnInit {
   showRecipeModal = false;
   isLoading = false;
   errorMessage = '';
+  loadingMessage = 'Loading recipes...';
+  
+  // Pagination
+  currentPage = 1;
+  itemsPerPage = 8; // Smaller for compact view
+  totalPages = 1;
+  startIndex = 0;
+  endIndex = 0;
 
   searchQuery = '';
 
+  // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
 
-  // Pagination
-  currentPage = 1;
-  itemsPerPage = 5;
-  totalPages = 1;
+  // Current date for display
+  currentDate: string = '';
 
-  private supabaseService = inject(SupabaseService);
-  private cdr = inject(ChangeDetectorRef);
+  constructor(
+    private supabaseService: SupabaseService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {
+    this.setCurrentDate();
     this.loadRecipes();
   }
 
+  private setCurrentDate() {
+    const now = new Date();
+    this.currentDate = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }
+
   createEmptyRecipe(): RecipeForm {
-    return { name: '', stdYield: 0, skus: [], premixes: [] };
+    return { name: '', stdYield: 0, rawMaterials: [] };
+  }
+
+  // Helper methods for combining SKUs and Premixes
+  getTotalRawMaterials(recipe: RecipeWithDetails): number {
+    return (recipe.skus?.length || 0) + (recipe.premixes?.length || 0);
+  }
+
+  getCombinedMaterials(recipe: RecipeWithDetails): CombinedMaterial[] {
+    const combined: CombinedMaterial[] = [];
+    
+    // Add SKUs first (standard items)
+    if (recipe.skus) {
+      recipe.skus.forEach(sku => {
+        combined.push({
+          name: sku.name,
+          type: 'sku',
+          quantity1b: sku.quantity1b || 0,
+          quantityhalfb: sku.quantityhalfb || 0,
+          quantityquarterb: sku.quantityquarterb || 0
+        });
+      });
+    }
+    
+    // Add Premixes after SKUs
+    if (recipe.premixes) {
+      recipe.premixes.forEach(premix => {
+        combined.push({
+          name: premix.name,
+          type: 'premix',
+          quantity1b: premix.quantity1b || 0,
+          quantityhalfb: premix.quantityhalfb || 0,
+          quantityquarterb: premix.quantityquarterb || 0
+        });
+      });
+    }
+    
+    return combined;
+  }
+
+  // Toggle collapsible card
+  toggleRecipeExpand(recipeId: string | undefined) {
+    if (!recipeId) return;
+    this.expandedRecipeId = this.expandedRecipeId === recipeId ? null : recipeId;
+    this.cdr.detectChanges();
   }
 
   async loadRecipes() {
     this.isLoading = true;
+    this.loadingMessage = 'Loading recipes...';
     this.errorMessage = '';
     try {
       const data = await this.supabaseService.getAllRecipesWithDetails();
@@ -87,7 +156,7 @@ export class RecipesComponent implements OnInit {
     }
   }
 
-  // NEW: Combined search + pagination
+  // Combined search + pagination
   applyFiltersAndPagination() {
     let filtered = [...this.allRecipes];
 
@@ -103,9 +172,9 @@ export class RecipesComponent implements OnInit {
     this.totalPages = Math.max(1, Math.ceil(filtered.length / this.itemsPerPage));
     if (this.currentPage > this.totalPages) this.currentPage = this.totalPages;
 
-    const start = (this.currentPage - 1) * this.itemsPerPage;
-    const end = start + this.itemsPerPage;
-    this.recipes = filtered.slice(start, end);
+    this.startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    this.endIndex = Math.min(this.startIndex + this.itemsPerPage, filtered.length);
+    this.recipes = filtered.slice(this.startIndex, this.endIndex);
 
     this.cdr.detectChanges();
   }
@@ -113,12 +182,14 @@ export class RecipesComponent implements OnInit {
   // Call this from search input
   onSearchInput() {
     this.currentPage = 1;
+    this.expandedRecipeId = null;
     this.applyFiltersAndPagination();
   }
 
   nextPage() {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
+      this.expandedRecipeId = null;
       this.applyFiltersAndPagination();
     }
   }
@@ -126,6 +197,7 @@ export class RecipesComponent implements OnInit {
   previousPage() {
     if (this.currentPage > 1) {
       this.currentPage--;
+      this.expandedRecipeId = null;
       this.applyFiltersAndPagination();
     }
   }
@@ -136,24 +208,43 @@ export class RecipesComponent implements OnInit {
   }
 
   openEditRecipeModal(recipe: RecipeWithDetails) {
+    // Convert recipe to our new format
+    const rawMaterials: RawMaterialForm[] = [];
+    
+    // Add SKUs
+    if (recipe.skus) {
+      recipe.skus.forEach(sku => {
+        rawMaterials.push({
+          name: sku.name,
+          type: 'sku',
+          quantity1b: sku.quantity1b || 0,
+          quantityhalfb: sku.quantityhalfb || 0,
+          quantityquarterb: sku.quantityquarterb || 0
+        });
+      });
+    }
+    
+    // Add Premixes
+    if (recipe.premixes) {
+      recipe.premixes.forEach(premix => {
+        rawMaterials.push({
+          name: premix.name,
+          type: 'premix',
+          quantity1b: premix.quantity1b || 0,
+          quantityhalfb: premix.quantityhalfb || 0,
+          quantityquarterb: premix.quantityquarterb || 0
+        });
+      });
+    }
+    
     this.editingRecipe = {
       id: recipe.id,
       name: recipe.name,
       stdYield: recipe.std_yield ?? 0,
-      skus: recipe.skus.map(s => ({
-        name: s.name,
-        quantity1b: s.quantity1b || 0,
-        quantityhalfb: s.quantityhalfb || 0,
-        quantityquarterb: s.quantityquarterb || 0
-      })),
-      premixes: recipe.premixes.map(p => ({
-        name: p.name,
-        quantity1b: p.quantity1b || 0,
-        quantityhalfb: p.quantityhalfb || 0,
-        quantityquarterb: p.quantityquarterb || 0
-      }))
+      rawMaterials
     };
     this.showRecipeModal = true;
+    this.expandedRecipeId = null;
   }
 
   closeRecipeModal() {
@@ -164,6 +255,7 @@ export class RecipesComponent implements OnInit {
   viewRecipeDetails(recipe: RecipeWithDetails) {
     this.selectedRecipe = recipe;
     this.showDetailsModal = true;
+    this.expandedRecipeId = null;
   }
 
   closeDetailsModal() {
@@ -171,39 +263,64 @@ export class RecipesComponent implements OnInit {
     this.selectedRecipe = null;
   }
 
-  addSku() {
-this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quantityquarterb: 0 });  }
-
-  removeSku(index: number) {
-    this.editingRecipe.skus.splice(index, 1);
+  addRawMaterial(type: 'sku' | 'premix') {
+    this.editingRecipe.rawMaterials.push({ 
+      name: '', 
+      type: type,
+      quantity1b: 0, 
+      quantityhalfb: 0, 
+      quantityquarterb: 0 
+    });
   }
 
-  addPremix() {
-    this.editingRecipe.premixes.push({ name: '', quantity1b: 0, quantityhalfb: 0, quantityquarterb: 0 });
-  }
-
-  removePremix(index: number) {
-    this.editingRecipe.premixes.splice(index, 1);
+  removeRawMaterial(index: number) {
+    this.editingRecipe.rawMaterials.splice(index, 1);
   }
 
   isRecipeValid(): boolean {
-    const hasValidSkus = this.editingRecipe.skus.some(sku => sku.name.trim() !== '');
-    const hasValidPremixes = this.editingRecipe.premixes.some(premix => premix.name.trim() !== '');
+    const hasValidMaterials = this.editingRecipe.rawMaterials.some(material => material.name.trim() !== '');
     return !!this.editingRecipe.name.trim() &&
            this.editingRecipe.stdYield >= 0 &&
-           (hasValidSkus || hasValidPremixes);
+           hasValidMaterials;
   }
 
   async saveRecipe() {
     if (!this.isRecipeValid()) {
-      this.showSnackbar('Please fill in all required fields and add at least one valid SKU or Premix', 'warning');
+      this.showSnackbar('Please fill in all required fields and add at least one valid raw material', 'warning');
       return;
     }
 
     this.isLoading = true;
+    this.loadingMessage = 'Saving recipe...';
     try {
-      const validSkus = this.editingRecipe.skus.filter(sku => sku.name.trim() !== '');
-      const validPremixes = this.editingRecipe.premixes.filter(premix => premix.name.trim() !== '');
+      // Separate SKUs and Premixes from raw materials
+      const validMaterials = this.editingRecipe.rawMaterials.filter(material => material.name.trim() !== '');
+      
+      const skus = validMaterials
+        .filter(material => material.type === 'sku')
+        .map(material => ({
+          id: undefined,
+          recipe_id: this.editingRecipe.id || '',
+          name: material.name.trim(),
+          type: 'sku' as const,
+          quantity1b: material.quantity1b || 0,
+          quantityhalfb: material.quantityhalfb || 0,
+          quantityquarterb: material.quantityquarterb || 0,
+          created_at: undefined
+        }));
+      
+      const premixes = validMaterials
+        .filter(material => material.type === 'premix')
+        .map(material => ({
+          id: undefined,
+          recipe_id: this.editingRecipe.id || '',
+          name: material.name.trim(),
+          type: 'premix' as const,
+          quantity1b: material.quantity1b || 0,
+          quantityhalfb: material.quantityhalfb || 0,
+          quantityquarterb: material.quantityquarterb || 0,
+          created_at: undefined
+        }));
 
       const recipeData: RecipeWithDetails = {
         id: this.editingRecipe.id,
@@ -212,26 +329,8 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
         batch_size: 1,
         yield_kg: 0,
         created_at: undefined,
-        skus: validSkus.map(sku => ({
-          id: undefined,
-          recipe_id: this.editingRecipe.id || '',
-          name: sku.name.trim(),
-          type: 'sku' as const,
-          quantity1b: sku.quantity1b || 0,
-          quantityhalfb: sku.quantityhalfb || 0,
-          quantityquarterb: sku.quantityquarterb || 0,
-          created_at: undefined
-        })),
-        premixes: validPremixes.map(premix => ({
-          id: undefined,
-          recipe_id: this.editingRecipe.id || '',
-          name: premix.name.trim(),
-          type: 'premix' as const,
-          quantity1b: premix.quantity1b || 0,
-          quantityhalfb: premix.quantityhalfb || 0,
-          quantityquarterb: premix.quantityquarterb || 0,
-          created_at: undefined
-        }))
+        skus,
+        premixes
       };
 
       const result = await this.supabaseService.saveRecipeWithItems(recipeData);
@@ -248,10 +347,11 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
     }
   }
 
-  async deleteRecipe(recipeId?: string, recipeName?: string) {
+  async deleteRecipe(recipeId: string | undefined, recipeName?: string) {
     if (!recipeId || !confirm(`Are you sure you want to delete "${recipeName}"?`)) return;
 
     this.isLoading = true;
+    this.loadingMessage = 'Deleting recipe...';
     try {
       const success = await this.supabaseService.deleteRecipe(recipeId);
       if (success) {
@@ -267,7 +367,7 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
   }
 
   async deleteAllRecipes() {
-    if (!confirm('DELETE ALL RECIPES?\nThis will permanently delete EVERY recipe and all SKUs/premixes.\nAre you sure?')) return;
+    if (!confirm('DELETE ALL RECIPES?\nThis will permanently delete EVERY recipe and all raw materials.\nAre you sure?')) return;
     if (!confirm('THIS IS IRREVERSIBLE!\nAll recipe data will be gone forever.\nStill proceed?')) return;
     const confirmation = prompt('Type "DELETE ALL" to confirm:');
     if (confirmation !== 'DELETE ALL') {
@@ -276,12 +376,14 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
     }
 
     this.isLoading = true;
+    this.loadingMessage = 'Deleting all recipes...';
     try {
       const success = await this.supabaseService.deleteAllRecipes();
       if (success) {
         this.allRecipes = [];
         this.recipes = [];
         this.currentPage = 1;
+        this.expandedRecipeId = null;
         this.showSnackbar('All recipes deleted successfully', 'error');
       }
     } catch (error: any) {
@@ -292,12 +394,12 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
     }
   }
 
-  // FINAL CORRECT IMPORT — REPEATED PRODUCT NAME STYLE
   async fileInputChange(event: any) {
     const file = event.target.files[0];
     if (!file) return;
 
     this.isLoading = true;
+    this.loadingMessage = 'Importing recipes...';
     this.showSnackbar('Importing recipes from Excel...', 'info');
 
     try {
@@ -306,7 +408,7 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      const recipesToImport = this.parseRepeatedProductNameExcel(rows.slice(1)); // skip header
+      const recipesToImport = this.parseRepeatedProductNameExcel(rows.slice(1));
 
       if (recipesToImport.length === 0) {
         this.showSnackbar('No valid recipes found in the file', 'warning');
@@ -316,6 +418,31 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
       let imported = 0;
       for (const recipe of recipesToImport) {
         try {
+          // Convert to new format
+          const rawMaterials: RawMaterialForm[] = [];
+          
+          // Add SKUs
+          recipe.skus.forEach((sku: any) => {
+            rawMaterials.push({
+              name: sku.name,
+              type: 'sku',
+              quantity1b: sku.quantity1b || 0,
+              quantityhalfb: sku.quantityhalfb || 0,
+              quantityquarterb: sku.quantityquarterb || 0
+            });
+          });
+          
+          // Add Premixes
+          recipe.premixes.forEach((premix: any) => {
+            rawMaterials.push({
+              name: premix.name,
+              type: 'premix',
+              quantity1b: premix.quantity1b || 0,
+              quantityhalfb: premix.quantityhalfb || 0,
+              quantityquarterb: premix.quantityquarterb || 0
+            });
+          });
+          
           const payload: RecipeWithDetails = {
             name: recipe.name.trim(),
             std_yield: recipe.stdYield,
@@ -324,6 +451,7 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
             skus: recipe.skus.map((s: any) => ({ ...s, type: 'sku' as const })),
             premixes: recipe.premixes.map((p: any) => ({ ...p, type: 'premix' as const }))
           };
+          
           await this.supabaseService.saveRecipeWithItems(payload);
           imported++;
         } catch (err) {
@@ -403,6 +531,7 @@ this.editingRecipe.skus.push({ name: '', quantity1b: 0, quantityhalfb: 0, quanti
   }
 
   refresh() {
+    this.loadingMessage = 'Refreshing recipes...';
     this.loadRecipes();
   }
 }

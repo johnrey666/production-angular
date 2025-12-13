@@ -105,7 +105,9 @@
       <div class="header-top-row compact-top-row">
         <!-- Week Selector -->
         <div class="week-selector compact-selector">
-          <button class="week-selector-btn compact-btn" (click)="showWeekSelector = !showWeekSelector" [disabled]="isLoading">
+          <button class="week-selector-btn compact-btn" 
+                  (click)="toggleWeekSelector($event)" 
+                  [disabled]="isLoading">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -121,16 +123,20 @@
           </button>
           
           <!-- Week Dropdown -->
-          <div class="week-dropdown compact-dropdown" *ngIf="showWeekSelector" (click)="$event.stopPropagation()">
+          <div class="week-dropdown compact-dropdown" 
+               *ngIf="showWeekSelector" 
+               (click)="$event.stopPropagation()"
+               [class.show]="showWeekSelector">
             <div class="week-dropdown-header compact-dropdown-header">
               <h4 class="compact-dropdown-title">Select Week</h4>
-              <button class="week-dropdown-close compact-close" (click)="showWeekSelector = false">×</button>
+              <button class="week-dropdown-close compact-close" 
+                      (click)="showWeekSelector = false; $event.stopPropagation()">×</button>
             </div>
             <div class="week-list compact-list">
               <div *ngFor="let week of availableWeeks" 
                    class="week-option compact-option"
                    [class.selected]="selectedWeek?.weekStartDate === week.weekStartDate"
-                   (click)="onWeekChange(week)">
+                   (click)="onWeekChange(week); $event.stopPropagation()">
                 {{ week.label }}
               </div>
             </div>
@@ -916,8 +922,12 @@
   </div>
 
   <!-- Week Dropdown Overlay -->
-  <div class="week-dropdown-overlay" *ngIf="showWeekSelector" (click)="showWeekSelector = false"></div>
+  <div class="week-dropdown-overlay" 
+       *ngIf="showWeekSelector" 
+       (click)="closeAllDropdowns()"></div>
   
   <!-- Location Dropdown Overlay -->
-  <div class="location-dropdown-overlay" *ngIf="showLocationDropdown" (click)="showLocationDropdown = false"></div>
+  <div class="location-dropdown-overlay" 
+       *ngIf="showLocationDropdown" 
+       (click)="closeAllDropdowns()"></div>
 </div>

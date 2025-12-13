@@ -111,8 +111,10 @@ export class ProductionComponent implements OnInit, OnDestroy {
   
   // UI State
   isLoading = false;
+  loadingMessage: string = 'Loading production data...'; // Added for loading spinner
   errorMessage = '';
   searchQuery = '';
+  searchTerm = ''; // Added to fix template error
   monthlySearchQuery = '';
   isDataLoadedFromStorage = false; // Track if data is from localStorage
   
@@ -126,6 +128,23 @@ export class ProductionComponent implements OnInit, OnDestroy {
   monthlyCurrentPage = 1;
   itemsPerPage = 5;
 
+  // Added for pagination display
+  get startIndex(): number {
+    return (this.currentPage - 1) * this.itemsPerPage;
+  }
+
+  get endIndex(): number {
+    return Math.min(this.startIndex + this.itemsPerPage, this.filteredEntries.length);
+  }
+
+  get monthlyStartIndex(): number {
+    return (this.monthlyCurrentPage - 1) * this.itemsPerPage;
+  }
+
+  get monthlyEndIndex(): number {
+    return Math.min(this.monthlyStartIndex + this.itemsPerPage, this.filteredMonthlyEntries.length);
+  }
+
   get today(): string {
     return new Date().toISOString().split('T')[0];
   }
@@ -137,6 +156,11 @@ export class ProductionComponent implements OnInit, OnDestroy {
 
   get monthlyTotalPages(): number {
     return Math.max(1, Math.ceil(this.filteredMonthlyEntries.length / this.itemsPerPage));
+  }
+
+  // Added for pagination
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.filteredEntries.length / this.itemsPerPage));
   }
 
   constructor() {
@@ -276,6 +300,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
     
     // Set loading state and then load data
     this.isLoading = true;
+    this.loadingMessage = 'Loading monthly data...';
     this.cdr.detectChanges(); // Force UI update
     
     try {
@@ -432,6 +457,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
   // Load data for selected date - FIXED: Always show all recipes
   async loadData() {
     this.isLoading = true;
+    this.loadingMessage = 'Loading production data...';
     this.errorMessage = '';
     this.isDataLoadedFromStorage = false;
     
@@ -490,6 +516,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
   // Load monthly data with aggregated SKU values - FIXED VERSION
   async loadMonthlyData() {
     this.isLoading = true;
+    this.loadingMessage = 'Loading monthly data...';
     this.errorMessage = '';
     
     try {
@@ -1069,6 +1096,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
     
     // Set loading state
     this.isLoading = true;
+    this.loadingMessage = 'Loading data...';
     this.cdr.detectChanges(); // Force UI update
     
     try {
@@ -1141,6 +1169,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
 
   onSearch() {
     const q = this.searchQuery.toLowerCase().trim();
+    this.searchTerm = q; // Update searchTerm for template
     if (!q) {
       this.filteredEntries = [...this.entries];
     } else {
@@ -1156,6 +1185,7 @@ export class ProductionComponent implements OnInit, OnDestroy {
 
   onMonthlySearch() {
     const q = this.monthlySearchQuery.toLowerCase().trim();
+    this.searchTerm = q; // Update searchTerm for template
     if (!q) {
       this.filteredMonthlyEntries = [...this.monthlyEntries];
     } else {
@@ -1172,10 +1202,6 @@ export class ProductionComponent implements OnInit, OnDestroy {
   get paginated() {
     const start = (this.currentPage - 1) * this.itemsPerPage;
     return this.filteredEntries.slice(start, start + this.itemsPerPage);
-  }
-
-  get totalPages(): number {
-    return Math.max(1, Math.ceil(this.filteredEntries.length / this.itemsPerPage));
   }
 
   nextPage() {
@@ -1504,5 +1530,27 @@ export class ProductionComponent implements OnInit, OnDestroy {
   hideSnackbar() {
     this.snackbarMessage = '';
     this.cdr.detectChanges();
+  }
+
+  // Added refresh method for the refresh button
+  async refreshData() {
+    this.isLoading = true;
+    this.loadingMessage = 'Refreshing data...';
+    this.cdr.detectChanges();
+    
+    try {
+      if (this.viewMode === 'daily') {
+        await this.loadData();
+      } else {
+        await this.loadMonthlyData();
+      }
+      this.showSnackbar('Data refreshed successfully', 'success');
+    } catch (error) {
+      console.error('Refresh error:', error);
+      this.showSnackbar('Failed to refresh data', 'error');
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
   }
 }

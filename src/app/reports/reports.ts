@@ -276,11 +276,22 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  // Location dropdown methods
+  // ==================== WEEK DROPDOWN FIXES ====================
+  
+  toggleWeekSelector(event: Event) {
+    event.stopPropagation();
+    this.showWeekSelector = !this.showWeekSelector;
+    this.showLocationDropdown = false; // Close location dropdown if open
+    this.cdr.detectChanges();
+  }
+
+  // ==================== LOCATION DROPDOWN METHODS ====================
+  
   toggleLocationDropdown(event: Event) {
     event.stopPropagation();
     this.showLocationDropdown = !this.showLocationDropdown;
     this.showWeekSelector = false; // Close week selector if open
+    this.cdr.detectChanges();
   }
 
   selectLocation(node: LocationNode, event: Event) {
@@ -329,18 +340,38 @@ export class ReportsComponent implements OnInit {
     return search(this.locationTree);
   }
 
+  // ==================== DROPDOWN MANAGEMENT ====================
+  
+  closeAllDropdowns() {
+    this.showWeekSelector = false;
+    this.showLocationDropdown = false;
+    this.cdr.detectChanges();
+  }
+
   // Close dropdowns when clicking outside
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event) {
-    if (!this.isLocationHovered && this.showLocationDropdown) {
-      this.showLocationDropdown = false;
-    }
-    if (this.showWeekSelector) {
+    // Only close dropdowns if click is outside both dropdowns
+    const target = event.target as HTMLElement;
+    const isWeekSelector = target.closest('.week-selector');
+    const isWeekDropdown = target.closest('.week-dropdown');
+    const isLocationSelector = target.closest('.location-selector');
+    const isLocationDropdown = target.closest('.location-tree-dropdown');
+    const isOverlay = target.closest('.week-dropdown-overlay') || target.closest('.location-dropdown-overlay');
+    
+    if (this.showWeekSelector && !isWeekSelector && !isWeekDropdown && !isOverlay) {
       this.showWeekSelector = false;
+      this.cdr.detectChanges();
+    }
+    
+    if (this.showLocationDropdown && !isLocationSelector && !isLocationDropdown && !isOverlay) {
+      this.showLocationDropdown = false;
+      this.cdr.detectChanges();
     }
   }
 
-  // SKU catalog loader
+  // ==================== SKU CATALOG METHODS ====================
+  
   async loadSkuCatalog() {
     this.isLoadingCatalog = true;
     try {
@@ -394,7 +425,8 @@ export class ReportsComponent implements OnInit {
     if (item.type) this.currentProduct.type = item.type;
   }
 
-  // Initialize week with all SKUs with progress loader
+  // ==================== WEEK INITIALIZATION ====================
+  
   async initializeWeekWithAllSkus() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -497,6 +529,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== DATABASE METHODS ====================
+  
   async fixSchemaCache(): Promise<void> {
     try {
       this.showSnackbar('Attempting to fix schema cache...', 'info');
@@ -516,7 +550,6 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  // Clear All Locations Data for Selected Week - FIXED VERSION
   async clearAllLocationsData() {
     if (!this.selectedWeek) {
       this.showSnackbar('Please select a week first', 'warning');
@@ -625,6 +658,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== DATE & WEEK METHODS ====================
+  
   getCurrentWeek(): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
     const today = new Date();
     const year = today.getFullYear();
@@ -726,6 +761,8 @@ export class ReportsComponent implements OnInit {
     };
   }
 
+  // ==================== DATA LOADING ====================
+  
   async loadReportsFromDatabase() {
     this.isLoading = true;
     try {
@@ -798,6 +835,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== DATA FILTERING ====================
+  
   filterDataByWeek() {
     if (!this.selectedWeek) {
       this.allReportData = new Map(this.originalReportData);
@@ -831,6 +870,7 @@ export class ReportsComponent implements OnInit {
     this.selectedWeek = week;
     this.filterDataByWeek();
     this.showWeekSelector = false;
+    this.cdr.detectChanges();
   }
 
   onStoreChange() {
@@ -959,6 +999,8 @@ export class ReportsComponent implements OnInit {
     this.loadStoreData();
   }
 
+  // ==================== DATA FORMAT CONVERSION ====================
+  
   fromDatabaseFormat(dbItem: any): ReportItem {
     return {
       id: dbItem.id,
@@ -1007,6 +1049,8 @@ export class ReportsComponent implements OnInit {
     return dbItem;
   }
 
+  // ==================== UI HELPERS ====================
+  
   getTypeClass(type: string): string {
     switch(type) {
       case 'Finished Goods': return 'type-fg';
@@ -1018,6 +1062,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== DATABASE OPERATIONS ====================
+  
   async saveToDatabase(item: ReportItem): Promise<ReportItem | null> {
     try {
       const dbItem = this.toDatabaseFormat(item);
@@ -1139,6 +1185,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== FILTERING & SEARCH ====================
+  
   applyFiltersAndSearch() {
     if (this.selectedStore === 'All') {
       this.applyAggregatedFilters();
@@ -1239,6 +1287,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== PRODUCT MANAGEMENT ====================
+  
   createEmptyProduct(): ReportItem {
     const currentWeek = this.getCurrentWeek();
     
@@ -1317,6 +1367,8 @@ export class ReportsComponent implements OnInit {
     return 'low';
   }
 
+  // ==================== SNACKBAR ====================
+  
   showSnackbar(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') {
     if (this.snackbarTimeout) {
       clearTimeout(this.snackbarTimeout);
@@ -1341,6 +1393,8 @@ export class ReportsComponent implements OnInit {
     this.cdr.detectChanges();
   }
 
+  // ==================== PRODUCT MODAL ====================
+  
   addNewProduct() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
@@ -1551,6 +1605,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== EXPORT ====================
+  
   exportToExcel() {
     if (!this.selectedStore || this.selectedStore === 'custom') {
       this.showSnackbar('Please select a store first', 'warning');
@@ -1703,6 +1759,8 @@ export class ReportsComponent implements OnInit {
     this.currentProduct = this.createEmptyProduct();
   }
 
+  // ==================== OTHER METHODS ====================
+  
   async refresh() {
     await this.loadReportsFromDatabase();
     if (this.selectedStore === 'All') {
@@ -1834,6 +1892,8 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  // ==================== FILL RATE CALCULATIONS ====================
+  
   getTotalFillRate(): number {
     const storeData = this.getCurrentStoreData();
     if (storeData.length === 0) return 0;

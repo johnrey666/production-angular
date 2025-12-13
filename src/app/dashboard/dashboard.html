@@ -1,6 +1,6 @@
 <div class="dashboard" @fadeInUp>
-  <!-- Loading State -->
-  <div *ngIf="isLoading" class="loading-overlay">
+  <!-- Loading State - CLEAN & CENTERED -->
+  <div *ngIf="isLoading" class="dashboard-loading">
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <p class="loading-text">{{ loadingMessage }}</p>
@@ -8,7 +8,7 @@
   </div>
 
   <!-- Dashboard Content -->
-  <div *ngIf="!isLoading" class="dashboard-content">
+  <div class="dashboard-content" [class.content-loading]="isLoading">
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-left">
@@ -137,7 +137,7 @@
           <div class="search-box">
             <input 
               type="text" 
-              placeholder="Search..." 
+              placeholder="Search SKU or Material..." 
               [(ngModel)]="searchTerm"
               (ngModelChange)="filterMonthlySummary()"
             >
@@ -153,8 +153,13 @@
       </div>
 
       <div class="table-info">
-        <span>{{ paginatedMonthlySummary.length }} of {{ filteredMonthlySummary.length }} items</span>
-        <span *ngIf="searchTerm" class="search-indicator">Filtered: "{{ searchTerm }}"</span>
+        <span>
+          {{ paginatedMonthlySummary.length }} of {{ filteredMonthlySummary.length }} items
+          <span *ngIf="searchTerm" class="search-indicator">Filtered: "{{ searchTerm }}"</span>
+        </span>
+        <span *ngIf="monthlySummary.length > 0">
+          Period: {{ currentMonthYear }}
+        </span>
       </div>
 
       <div class="table-wrapper">
@@ -170,9 +175,9 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngIf="paginatedMonthlySummary.length === 0">
+            <tr *ngIf="paginatedMonthlySummary.length === 0 && !isLoading">
               <td colspan="6" class="empty-state">
-                No data available
+                {{ monthlySummary.length === 0 ? 'No data available for selected period' : 'No items match your search' }}
               </td>
             </tr>
             
