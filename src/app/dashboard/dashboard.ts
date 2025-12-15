@@ -53,6 +53,20 @@ interface SkuCatalogItem {
   type?: string;
 }
 
+interface ProductionLog {
+  id?: string;
+  recipe_id: string;
+  recipe_name: string;
+  order_kg: number;
+  date: string;
+  item_name: string;
+  type: string;
+  raw_used: number;
+  actual_output: number;
+  raw_cost: number;
+  created_at?: string;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -494,18 +508,50 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async loadSummaryStatistics() {
     try {
-      // Load recipes count
+      // Load recipes count from recipes table
       const recipes = await this.supabase.getAllRecipesWithDetails();
       this.totalRecipes = recipes?.length || 0;
       
-      // Load SKU catalog
-      const skuCatalog = await this.loadSkuCatalog();
-      this.totalRawMaterials = skuCatalog.filter((item: SkuCatalogItem) => 
-        (item.type?.toLowerCase().includes('raw') || 
-         item.description?.toLowerCase().includes('raw material'))
-      ).length || 0;
+      // Load raw materials count from materials table
+      const rawMaterials = await this.loadRawMaterials();
+      this.totalRawMaterials = rawMaterials?.length || 0;
       
       // Calculate top product and total batches for selected period
+      await this.calculateTopProductAndTotalBatches();
+      
+      // Calculate fill rates
+      await this.calculateAllStoresFillRate();
+      await this.calculateStoresReporting();
+      
+    } catch (error) {
+      console.error('Error loading summary statistics:', error);
+    }
+  }
+
+  // NEW: Load raw materials directly from materials table
+  private async loadRawMaterials(): Promise<any[]> {
+    try {
+      const { data, error } = await this.supabase['supabase']
+        .from('materials')
+        .select('id, sku, description')
+        .order('sku');
+      
+      if (error) {
+        console.error('Error loading raw materials:', error);
+        return [];
+      }
+      
+      return data || [];
+      
+    } catch (error) {
+      console.error('Error in loadRawMaterials:', error);
+      return [];
+    }
+  }
+
+  // NEW: Calculate top product and total batches
+  private async calculateTopProductAndTotalBatches() {
+    try {
       const year = this.selectedYear;
       const month = this.selectedMonth;
       const monthStart = `${year}-${month.toString().padStart(2, '0')}-01`;
@@ -514,48 +560,68 @@ export class DashboardComponent implements OnInit, OnDestroy {
       
       const monthlyData = await this.supabase.getProductionLogsByDateRange(monthStart, monthEnd);
       
-      if (monthlyData && monthlyData.length > 0) {
-        const productOrders = new Map<string, number>();
-        
-        monthlyData.forEach((log: any) => {
-          const recipeName = log.recipe_name || 'Unknown';
-          const orderKg = log.order_kg || 0;
-          
-          if (orderKg > 0) {
-            if (productOrders.has(recipeName)) {
-              productOrders.set(recipeName, productOrders.get(recipeName)! + orderKg);
-            } else {
-              productOrders.set(recipeName, orderKg);
-            }
-          }
-        });
-        
-        let topProduct = '';
-        let topOrder = 0;
-        
-        productOrders.forEach((order, product) => {
-          if (order > topOrder) {
-            topOrder = order;
-            topProduct = product;
-          }
-        });
-        
-        this.topProductName = topProduct || 'No production data';
-        this.topProductOrder = topOrder;
-        this.totalBatches = Array.from(productOrders.values()).reduce((sum, order) => sum + order, 0);
-      } else {
-        // Reset if no data
+      if (!monthlyData || monthlyData.length === 0) {
         this.topProductName = 'No production data';
         this.topProductOrder = 0;
         this.totalBatches = 0;
+        return;
       }
       
-      // Calculate fill rates
-      await this.calculateAllStoresFillRate();
-      await this.calculateStoresReporting();
+      // Map to track recipe orders per day (avoid duplicates)
+      const recipeOrdersMap = new Map<string, Map<string, number>>();
+      let totalBatches = 0;
+      
+      monthlyData.forEach((log: ProductionLog) => {
+        const recipeName = log.recipe_name || 'Unknown';
+        const date = log.date;
+        const orderKg = log.order_kg || 0;
+        
+        if (orderKg > 0) {
+          // Initialize date map for recipe if not exists
+          if (!recipeOrdersMap.has(recipeName)) {
+            recipeOrdersMap.set(recipeName, new Map<string, number>());
+          }
+          
+          const dateMap = recipeOrdersMap.get(recipeName)!;
+          
+          // Only count order once per recipe per day (use max order value)
+          if (!dateMap.has(date) || orderKg > dateMap.get(date)!) {
+            if (dateMap.has(date)) {
+              // Subtract previous order for this day and add new max
+              totalBatches -= dateMap.get(date)!;
+            }
+            dateMap.set(date, orderKg);
+            totalBatches += orderKg;
+          }
+        }
+      });
+      
+      this.totalBatches = totalBatches;
+      
+      // Find top product (recipe with highest total order)
+      let topProductName = 'No production data';
+      let topProductOrder = 0;
+      
+      recipeOrdersMap.forEach((dateMap, recipeName) => {
+        const totalOrder = Array.from(dateMap.values()).reduce((sum, order) => sum + order, 0);
+        
+        if (totalOrder > topProductOrder) {
+          topProductOrder = totalOrder;
+          topProductName = recipeName;
+        }
+      });
+      
+      this.topProductName = topProductName;
+      this.topProductOrder = topProductOrder;
+      
+      console.log(`Top product: ${topProductName} (${topProductOrder} batches)`);
+      console.log(`Total batches: ${totalBatches}`);
       
     } catch (error) {
-      console.error('Error loading summary statistics:', error);
+      console.error('Error calculating top product and total batches:', error);
+      this.topProductName = 'Error loading data';
+      this.topProductOrder = 0;
+      this.totalBatches = 0;
     }
   }
 
