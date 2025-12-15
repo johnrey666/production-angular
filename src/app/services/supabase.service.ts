@@ -18,23 +18,22 @@ export interface ProductionLog {
   id?: string;
   date: string;
   recipe_id: string;
-  recipe_name?: string; // Add this
-  order_kg?: number;    // Add this
+  recipe_name?: string;
+  order_kg?: number;
   batches: number;
   actual_output: number;
   raw_used: number;
   raw_cost: number;
-  remark?: string;      // Add this
-  type?: 'sku' | 'premix'; // Add this for item type
-  item_name?: string;   // Add this for the SKU/premix name
+  remark?: string;
+  type?: 'sku' | 'premix';
+  item_name?: string;
   created_at?: string;
 }
 
-// Make password optional and add type for user without password
 export interface User {
   id?: string;
   username: string;
-  password?: string;  // Make password optional
+  password?: string;
   full_name: string;
   role: string;
   created_at?: string;
@@ -48,31 +47,31 @@ export interface UserWithoutPassword {
   created_at?: string;
 }
 
-// Update the existing Recipe interface
+// Update the existing Recipe interface with SKU field
 export interface Recipe {
   id?: string;
   name: string;
+  sku?: string | null; // Allow both string, null, or undefined
   batch_size: number;
   yield_kg: number;
-  std_yield?: number; // Add this
+  std_yield?: number;
   created_at?: string;
 }
 
-// Update RecipeWithDetails interface
+// Update RecipeWithDetails interface with SKU field
 export interface RecipeWithDetails extends Recipe {
   skus: RecipeItem[];
   premixes: RecipeItem[];
 }
 
-// RecipeItem interface - UPDATED WITH LOWERCASE COLUMN NAMES
 export interface RecipeItem {
   id?: string;
   recipe_id: string;
   name: string;
   type: 'sku' | 'premix';
-  quantity1b: number;       // lowercase
-  quantityhalfb: number;    // lowercase
-  quantityquarterb: number; // lowercase
+  quantity1b: number;
+  quantityhalfb: number;
+  quantityquarterb: number;
   created_at?: string;
 }
 
@@ -95,12 +94,11 @@ export class SupabaseService {
     try {
       console.log('Attempting login for user:', username);
       
-      // Query user by username
       const { data, error } = await this.supabase
         .from('users')
         .select('*')
         .eq('username', username)
-        .single(); // Expect single result
+        .single();
       
       if (error) {
         console.error('Supabase error in login:', error);
@@ -109,9 +107,7 @@ export class SupabaseService {
       
       console.log('User found in database:', data);
       
-      // Check password (plain text for demo)
       if (data && data.password === password) {
-        // Return user without password
         const userWithoutPassword: UserWithoutPassword = {
           id: data.id,
           username: data.username,
@@ -175,7 +171,6 @@ export class SupabaseService {
     try {
       console.log('Saving material:', material);
       if (material.id) {
-        // Update existing
         const { data, error } = await this.supabase
           .from('materials')
           .update(material)
@@ -188,7 +183,6 @@ export class SupabaseService {
         }
         return data;
       } else {
-        // Insert new
         const { data, error } = await this.supabase
           .from('materials')
           .insert([material])
@@ -250,18 +244,17 @@ export class SupabaseService {
       
       const payload: any = {
         name: recipe.name.trim(),
+        sku: recipe.sku?.trim() || null,
         batch_size: recipe.batch_size ?? 1,
         yield_kg: recipe.yield_kg ?? 0,
       };
 
-      // Only include std_yield if it's a real number (not null/undefined)
       if (recipe.std_yield !== undefined && recipe.std_yield !== null) {
         payload.std_yield = recipe.std_yield;
       }
 
       let result;
       if (recipe.id) {
-        // UPDATE existing recipe
         console.log('Updating existing recipe with ID:', recipe.id);
         result = await this.supabase
           .from('recipes')
@@ -269,7 +262,6 @@ export class SupabaseService {
           .eq('id', recipe.id)
           .select();
       } else {
-        // INSERT new recipe – DO NOT send id at all
         console.log('Inserting new recipe');
         result = await this.supabase
           .from('recipes')
@@ -292,7 +284,6 @@ export class SupabaseService {
     }
   }
 
-  // ===== RECIPE INGREDIENTS =====
   async getRecipeIngredients(recipeId: string): Promise<any[]> {
     try {
       const { data, error } = await this.supabase
@@ -367,7 +358,6 @@ export class SupabaseService {
   // ===== PRODUCTION LOGS =====
   async getProductionLogs(month: string): Promise<any[]> {
     try {
-      // month format: "2024-01"
       const startDate = `${month}-01`;
       const endDate = `${month}-31`;
       
@@ -392,7 +382,6 @@ export class SupabaseService {
     }
   }
 
-  // Add this method - get logs for a specific date
   async getProductionLogsByDate(date: string): Promise<any[]> {
     try {
       const { data, error } = await this.supabase
@@ -409,11 +398,10 @@ export class SupabaseService {
         return [];
       }
       
-      // Transform data to include recipe_name
       return data?.map(log => ({
         ...log,
         recipe_name: log.recipes?.name || 'Unknown Recipe',
-        type: log.type || 'sku', // Default to sku if not specified
+        type: log.type || 'sku',
         item_name: log.item_name || 'Unknown Item'
       })) || [];
       
@@ -425,7 +413,6 @@ export class SupabaseService {
 
   async saveProductionLog(log: ProductionLog): Promise<ProductionLog[] | null> {
     try {
-      // Prepare the log data, including optional fields
       const logData: any = {
         date: log.date,
         recipe_id: log.recipe_id,
@@ -435,7 +422,6 @@ export class SupabaseService {
         raw_cost: log.raw_cost
       };
       
-      // Add optional fields if they exist
       if (log.recipe_name) logData.recipe_name = log.recipe_name;
       if (log.order_kg !== undefined) logData.order_kg = log.order_kg;
       if (log.remark) logData.remark = log.remark;
@@ -458,25 +444,25 @@ export class SupabaseService {
     }
   }
 
-async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<any[]> {
-  try {
-    const { data, error } = await this.supabase
-      .from('production_logs')
-      .select('*')  // Select ALL fields
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: true });
-    
-    if (error) {
-      console.error('Supabase error in getProductionLogsByDateRange:', error);
+  async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<any[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('production_logs')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+      
+      if (error) {
+        console.error('Supabase error in getProductionLogsByDateRange:', error);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Error in getProductionLogsByDateRange:', error);
       return [];
     }
-    return data || [];
-  } catch (error) {
-    console.error('Error in getProductionLogsByDateRange:', error);
-    return [];
   }
-}
 
   async deleteProductionLogsByDate(date: string): Promise<boolean> {
     try {
@@ -662,7 +648,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         return null;
       }
       
-      // Calculate statistics
       const byCategory: {[key: string]: any} = {};
       let totalValue = 0;
       let totalStock = 0;
@@ -703,17 +688,17 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     const { data, error } = await this.supabase
       .from('materials')
       .upsert(materials, { onConflict: 'sku' })
-      .select('*'); // IMPORTANT: ensures Supabase returns rows
+      .select('*');
 
     if (error) throw error;
-    return data as Material[]; // Ensures correct typing
+    return data as Material[];
   }
 
   async deleteAllMaterials() {
     const { error } = await this.supabase
       .from('materials')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // deletes all
+      .neq('id', '00000000-0000-0000-0000-000000000000');
 
     if (error) throw error;
   }
@@ -742,15 +727,14 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     try {
       console.log('Saving recipe item:', item);
       if (item.id) {
-        // Update existing - USE LOWERCASE COLUMN NAMES
         const { data, error } = await this.supabase
           .from('recipe_items')
           .update({
             name: item.name,
             type: item.type,
-            quantity1b: item.quantity1b,       // lowercase
-            quantityhalfb: item.quantityhalfb, // lowercase
-            quantityquarterb: item.quantityquarterb // lowercase
+            quantity1b: item.quantity1b,
+            quantityhalfb: item.quantityhalfb,
+            quantityquarterb: item.quantityquarterb
           })
           .eq('id', item.id)
           .select();
@@ -761,16 +745,15 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         }
         return data;
       } else {
-        // Insert new - USE LOWERCASE COLUMN NAMES
         const { data, error } = await this.supabase
           .from('recipe_items')
           .insert([{
             recipe_id: item.recipe_id,
             name: item.name,
             type: item.type,
-            quantity1b: item.quantity1b,       // lowercase
-            quantityhalfb: item.quantityhalfb, // lowercase
-            quantityquarterb: item.quantityquarterb // lowercase
+            quantity1b: item.quantity1b,
+            quantityhalfb: item.quantityhalfb,
+            quantityquarterb: item.quantityquarterb
           }])
           .select();
         
@@ -790,14 +773,13 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     try {
       console.log('Bulk saving recipe items:', items.length);
       
-      // Remove IDs for new items to let Supabase generate them - USE LOWERCASE COLUMN NAMES
       const itemsToInsert = items.map(item => ({
         recipe_id: item.recipe_id,
         name: item.name,
         type: item.type,
-        quantity1b: item.quantity1b,       // lowercase
-        quantityhalfb: item.quantityhalfb, // lowercase
-        quantityquarterb: item.quantityquarterb // lowercase
+        quantity1b: item.quantity1b,
+        quantityhalfb: item.quantityhalfb,
+        quantityquarterb: item.quantityquarterb
       }));
       
       const { data, error } = await this.supabase
@@ -859,10 +841,8 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     try {
       console.log('Deleting recipe ID:', id);
       
-      // First delete recipe items (due to foreign key constraint)
       await this.deleteRecipeItems(id);
       
-      // Then delete the recipe
       const { error } = await this.supabase
         .from('recipes')
         .delete()
@@ -883,7 +863,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     try {
       console.log('Getting recipe details for ID:', recipeId);
       
-      // Get recipe
       const { data: recipeData, error: recipeError } = await this.supabase
         .from('recipes')
         .select('*')
@@ -897,7 +876,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
 
       console.log('Recipe data retrieved:', recipeData);
       
-      // Get recipe items
       const { data: itemsData, error: itemsError } = await this.supabase
         .from('recipe_items')
         .select('*')
@@ -910,7 +888,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
 
       console.log('Recipe items retrieved:', itemsData);
       
-      // Separate SKUs and Premixes
       const skus = itemsData.filter(item => item.type === 'sku');
       const premixes = itemsData.filter(item => item.type === 'premix');
 
@@ -919,6 +896,7 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
       return {
         id: recipeData.id,
         name: recipeData.name,
+        sku: recipeData.sku || undefined,
         std_yield: recipeData.std_yield,
         batch_size: recipeData.batch_size,
         yield_kg: recipeData.yield_kg,
@@ -941,6 +919,7 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         .select(`
           id,
           name,
+          sku,
           std_yield,
           batch_size,
           yield_kg,
@@ -973,6 +952,7 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         return {
           id: row.id,
           name: row.name,
+          sku: row.sku || undefined,
           std_yield: row.std_yield,
           batch_size: row.batch_size || 1,
           yield_kg: row.yield_kg || 0,
@@ -996,10 +976,10 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
       console.log('=== STARTING saveRecipeWithItems ===');
       console.log('Input recipe:', JSON.stringify(recipe, null, 2));
       
-      // Step 1: Save the main recipe
       const recipePayload: Recipe = {
         id: recipe.id,
         name: recipe.name.trim(),
+        sku: recipe.sku?.trim() || null,
         std_yield: recipe.std_yield ?? 0,
         batch_size: recipe.batch_size ?? 1,
         yield_kg: recipe.yield_kg ?? 0,
@@ -1016,29 +996,25 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
       const recipeId = savedRecipe[0].id!;
       console.log('Saved recipe ID:', recipeId);
 
-      // Step 2: Delete old items only when editing (not on create)
       if (recipe.id) {
         console.log('Editing existing recipe, deleting old items...');
         await this.deleteRecipeItems(recipeId);
       }
 
-      // Step 3: Prepare items for insertion - USE LOWERCASE COLUMN NAMES
       const itemsToInsert: any[] = [];
       
-      // Filter out empty SKUs and add them to insertion array
       if (recipe.skus && recipe.skus.length > 0) {
         const validSkus = recipe.skus.filter(sku => sku.name && sku.name.trim() !== '');
         console.log(`Adding ${validSkus.length} valid SKUs out of ${recipe.skus.length} total`);
         
         validSkus.forEach((sku, index) => {
-          // Use lowercase column names to match database schema
           const item = {
             recipe_id: recipeId,
             name: sku.name.trim(),
             type: 'sku',
-            quantity1b: Number(sku.quantity1b) || 0,        // lowercase
-            quantityhalfb: Number(sku.quantityhalfb) || 0,  // lowercase
-            quantityquarterb: Number(sku.quantityquarterb) || 0 // lowercase
+            quantity1b: Number(sku.quantity1b) || 0,
+            quantityhalfb: Number(sku.quantityhalfb) || 0,
+            quantityquarterb: Number(sku.quantityquarterb) || 0
           };
           console.log(`SKU ${index + 1}:`, item);
           itemsToInsert.push(item);
@@ -1047,20 +1023,18 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         console.log('No SKUs provided');
       }
 
-      // Filter out empty premixes and add them to insertion array
       if (recipe.premixes && recipe.premixes.length > 0) {
         const validPremixes = recipe.premixes.filter(premix => premix.name && premix.name.trim() !== '');
         console.log(`Adding ${validPremixes.length} valid premixes out of ${recipe.premixes.length} total`);
         
         validPremixes.forEach((premix, index) => {
-          // Use lowercase column names to match database schema
           const item = {
             recipe_id: recipeId,
             name: premix.name.trim(),
             type: 'premix',
-            quantity1b: Number(premix.quantity1b) || 0,        // lowercase
-            quantityhalfb: Number(premix.quantityhalfb) || 0,  // lowercase
-            quantityquarterb: Number(premix.quantityquarterb) || 0 // lowercase
+            quantity1b: Number(premix.quantity1b) || 0,
+            quantityhalfb: Number(premix.quantityhalfb) || 0,
+            quantityquarterb: Number(premix.quantityquarterb) || 0
           };
           console.log(`Premix ${index + 1}:`, item);
           itemsToInsert.push(item);
@@ -1071,7 +1045,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
 
       console.log(`Total items to insert: ${itemsToInsert.length}`, JSON.stringify(itemsToInsert, null, 2));
 
-      // Step 4: Insert items (only if there are any)
       if (itemsToInsert.length > 0) {
         console.log('Inserting items into recipe_items table...');
         const { data, error } = await this.supabase
@@ -1093,7 +1066,6 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         console.log('No items to insert (all were empty or filtered out)');
       }
 
-      // Step 5: Return fresh data
       console.log('Fetching updated recipe details...');
       const updatedRecipe = await this.getRecipeWithDetails(recipeId);
       console.log('Updated recipe:', updatedRecipe);
@@ -1111,12 +1083,10 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     }
   }
 
-  // Add this method to check your table structure
   async checkRecipeItemsTable(): Promise<void> {
     try {
       console.log('Checking recipe_items table structure...');
       
-      // Try to get column information
       const { data, error } = await this.supabase
         .from('recipe_items')
         .select('*')
@@ -1129,14 +1099,13 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
         console.log('recipe_items table accessible. Sample row:', data);
       }
       
-      // Check if we can insert a simple test item
       const testItem = {
-        recipe_id: '00000000-0000-0000-0000-000000000000', // dummy ID
+        recipe_id: '00000000-0000-0000-0000-000000000000',
         name: 'Test Item',
         type: 'sku',
-        quantity1b: 0,       // lowercase
-        quantityhalfb: 0,    // lowercase
-        quantityquarterb: 0, // lowercase
+        quantity1b: 0,
+        quantityhalfb: 0,
+        quantityquarterb: 0,
       };
       
       console.log('Testing insert with dummy data:', testItem);
@@ -1151,18 +1120,16 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     try {
       console.log('Deleting ALL recipes and their items...');
 
-      // First delete all recipe_items (child records)
       const { error: itemsError } = await this.supabase
         .from('recipe_items')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // deletes all
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (itemsError) {
         console.error('Error deleting recipe_items:', itemsError);
         throw itemsError;
       }
 
-      // Then delete all recipes
       const { error: recipesError } = await this.supabase
         .from('recipes')
         .delete()
@@ -1181,20 +1148,19 @@ async getProductionLogsByDateRange(startDate: string, endDate: string): Promise<
     }
   }
 
-  // In your supabase.service.ts file, add this method:
-async deleteProductionLogsByRecipeAndDate(recipeId: string, date: string): Promise<boolean> {
-  try {
-    const { error } = await this.supabase
-      .from('production_logs')
-      .delete()
-      .eq('recipe_id', recipeId)
-      .eq('date', date);
-    
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Error deleting production logs by recipe and date:', error);
-    return false;
+  async deleteProductionLogsByRecipeAndDate(recipeId: string, date: string): Promise<boolean> {
+    try {
+      const { error } = await this.supabase
+        .from('production_logs')
+        .delete()
+        .eq('recipe_id', recipeId)
+        .eq('date', date);
+      
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting production logs by recipe and date:', error);
+      return false;
+    }
   }
-}
 }

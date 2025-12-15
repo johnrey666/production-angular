@@ -15,6 +15,7 @@ interface RawMaterialForm {
 interface RecipeForm {
   id?: string;
   name: string;
+  sku: string;
   stdYield: number;
   rawMaterials: RawMaterialForm[];
 }
@@ -35,11 +36,9 @@ interface CombinedMaterial {
   styleUrls: ['./recipes.css']
 })
 export class RecipesComponent implements OnInit {
-  // Original arrays
-  recipes: RecipeWithDetails[] = [];           // Displayed recipes (filtered + paginated)
-  allRecipes: RecipeWithDetails[] = [];        // Full dataset from Supabase
+  recipes: RecipeWithDetails[] = [];
+  allRecipes: RecipeWithDetails[] = [];
   
-  // New property for collapsible cards
   expandedRecipeId: string | null = null;
 
   selectedRecipe: RecipeWithDetails | null = null;
@@ -51,21 +50,18 @@ export class RecipesComponent implements OnInit {
   errorMessage = '';
   loadingMessage = 'Loading recipes...';
   
-  // Pagination
   currentPage = 1;
-  itemsPerPage = 8; // Smaller for compact view
+  itemsPerPage = 8;
   totalPages = 1;
   startIndex = 0;
   endIndex = 0;
 
   searchQuery = '';
 
-  // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
   snackbarTimeout: any;
 
-  // Current date for display
   currentDate: string = '';
 
   constructor(
@@ -89,10 +85,9 @@ export class RecipesComponent implements OnInit {
   }
 
   createEmptyRecipe(): RecipeForm {
-    return { name: '', stdYield: 0, rawMaterials: [] };
+    return { name: '', sku: '', stdYield: 0, rawMaterials: [] };
   }
 
-  // Helper methods for combining SKUs and Premixes
   getTotalRawMaterials(recipe: RecipeWithDetails): number {
     return (recipe.skus?.length || 0) + (recipe.premixes?.length || 0);
   }
@@ -100,7 +95,6 @@ export class RecipesComponent implements OnInit {
   getCombinedMaterials(recipe: RecipeWithDetails): CombinedMaterial[] {
     const combined: CombinedMaterial[] = [];
     
-    // Add SKUs first (standard items)
     if (recipe.skus) {
       recipe.skus.forEach(sku => {
         combined.push({
@@ -113,7 +107,6 @@ export class RecipesComponent implements OnInit {
       });
     }
     
-    // Add Premixes after SKUs
     if (recipe.premixes) {
       recipe.premixes.forEach(premix => {
         combined.push({
@@ -129,7 +122,6 @@ export class RecipesComponent implements OnInit {
     return combined;
   }
 
-  // Toggle collapsible card
   toggleRecipeExpand(recipeId: string | undefined) {
     if (!recipeId) return;
     this.expandedRecipeId = this.expandedRecipeId === recipeId ? null : recipeId;
@@ -156,7 +148,6 @@ export class RecipesComponent implements OnInit {
     }
   }
 
-  // Combined search + pagination
   applyFiltersAndPagination() {
     let filtered = [...this.allRecipes];
 
@@ -164,6 +155,7 @@ export class RecipesComponent implements OnInit {
       const q = this.searchQuery.toLowerCase();
       filtered = filtered.filter(recipe =>
         recipe.name.toLowerCase().includes(q) ||
+        (recipe.sku && recipe.sku.toLowerCase().includes(q)) ||
         recipe.skus.some(sku => sku.name.toLowerCase().includes(q)) ||
         recipe.premixes.some(premix => premix.name.toLowerCase().includes(q))
       );
@@ -179,7 +171,6 @@ export class RecipesComponent implements OnInit {
     this.cdr.detectChanges();
   }
 
-  // Call this from search input
   onSearchInput() {
     this.currentPage = 1;
     this.expandedRecipeId = null;
@@ -208,10 +199,8 @@ export class RecipesComponent implements OnInit {
   }
 
   openEditRecipeModal(recipe: RecipeWithDetails) {
-    // Convert recipe to our new format
     const rawMaterials: RawMaterialForm[] = [];
     
-    // Add SKUs
     if (recipe.skus) {
       recipe.skus.forEach(sku => {
         rawMaterials.push({
@@ -224,7 +213,6 @@ export class RecipesComponent implements OnInit {
       });
     }
     
-    // Add Premixes
     if (recipe.premixes) {
       recipe.premixes.forEach(premix => {
         rawMaterials.push({
@@ -240,6 +228,7 @@ export class RecipesComponent implements OnInit {
     this.editingRecipe = {
       id: recipe.id,
       name: recipe.name,
+      sku: recipe.sku || '',
       stdYield: recipe.std_yield ?? 0,
       rawMaterials
     };
@@ -293,7 +282,6 @@ export class RecipesComponent implements OnInit {
     this.isLoading = true;
     this.loadingMessage = 'Saving recipe...';
     try {
-      // Separate SKUs and Premixes from raw materials
       const validMaterials = this.editingRecipe.rawMaterials.filter(material => material.name.trim() !== '');
       
       const skus = validMaterials
@@ -325,6 +313,7 @@ export class RecipesComponent implements OnInit {
       const recipeData: RecipeWithDetails = {
         id: this.editingRecipe.id,
         name: this.editingRecipe.name.trim(),
+        sku: this.editingRecipe.sku?.trim() || null,
         std_yield: this.editingRecipe.stdYield,
         batch_size: 1,
         yield_kg: 0,
@@ -418,10 +407,8 @@ export class RecipesComponent implements OnInit {
       let imported = 0;
       for (const recipe of recipesToImport) {
         try {
-          // Convert to new format
           const rawMaterials: RawMaterialForm[] = [];
           
-          // Add SKUs
           recipe.skus.forEach((sku: any) => {
             rawMaterials.push({
               name: sku.name,
@@ -432,7 +419,6 @@ export class RecipesComponent implements OnInit {
             });
           });
           
-          // Add Premixes
           recipe.premixes.forEach((premix: any) => {
             rawMaterials.push({
               name: premix.name,
@@ -445,6 +431,7 @@ export class RecipesComponent implements OnInit {
           
           const payload: RecipeWithDetails = {
             name: recipe.name.trim(),
+            sku: recipe.sku || null,
             std_yield: recipe.stdYield,
             batch_size: 1,
             yield_kg: 0,
@@ -474,23 +461,25 @@ export class RecipesComponent implements OnInit {
     const recipeMap = new Map<string, any>();
 
     for (const row of rows) {
-      if (!row || row.length < 7) continue;
+      if (!row || row.length < 8) continue;
 
       const productName = String(row[0] || '').trim();
       if (!productName) continue;
 
-      const typeCell = String(row[1] || '').trim().toLowerCase();
-      const itemName = String(row[2] || '').trim();
+      const sku = String(row[1] || '').trim();
+      const typeCell = String(row[2] || '').trim().toLowerCase();
+      const itemName = String(row[3] || '').trim();
       if (!itemName) continue;
 
-      const qty1b = parseFloat(row[3]) || 0;
-      const qtyHalf = parseFloat(row[4]) || 0;
-      const qtyQuarter = parseFloat(row[5]) || 0;
-      const stdYield = parseFloat(row[6]) || 0;
+      const qty1b = parseFloat(row[4]) || 0;
+      const qtyHalf = parseFloat(row[5]) || 0;
+      const qtyQuarter = parseFloat(row[6]) || 0;
+      const stdYield = parseFloat(row[7]) || 0;
 
       if (!recipeMap.has(productName)) {
         recipeMap.set(productName, {
           name: productName,
+          sku: sku,
           stdYield: stdYield,
           skus: [],
           premixes: []

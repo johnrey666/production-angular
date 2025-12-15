@@ -85,7 +85,7 @@
           <div class="search-box">
             <input 
               type="text" 
-              placeholder="Search recipes or raw materials..." 
+              placeholder="Search recipes, SKUs or raw materials..." 
               [(ngModel)]="searchQuery"
               (input)="onSearchInput()"
             >
@@ -147,7 +147,10 @@
                 <div class="recipe-title">
                   <h3>{{ recipe.name }}</h3>
                   <div class="recipe-meta">
-                    <span class="recipe-id">ID: {{ recipe.id?.substring(0,8) }}...</span>
+                    <span class="recipe-sku">
+        
+                      #{{ recipe.sku || 'N/A' }}
+                    </span>
                     <span class="recipe-yield">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -281,9 +284,15 @@
         <button class="modal-close" (click)="closeDetailsModal()">×</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label>STD Yield:</label>
-          <div class="form-input-static">{{ selectedRecipe.std_yield || 0 }} kg</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>SKU:</label>
+            <div class="form-input-static">{{ selectedRecipe.sku || 'N/A' }}</div>
+          </div>
+          <div class="form-group">
+            <label>STD Yield:</label>
+            <div class="form-input-static">{{ selectedRecipe.std_yield || 0 }} kg</div>
+          </div>
         </div>
 
         <div *ngIf="getTotalRawMaterials(selectedRecipe) > 0" class="section">
@@ -330,11 +339,15 @@
 
       <div class="modal-body">
         <div class="form-row">
-          <div class="form-group" style="flex: 2;">
+          <div class="form-group" style="flex: 1.5;">
             <label>Product Name *</label>
             <input type="text" [(ngModel)]="editingRecipe.name" class="form-input" placeholder="Enter recipe name" required>
           </div>
-          <div class="form-group">
+          <div class="form-group" style="flex: 1;">
+            <label>SKU</label>
+            <input type="text" [(ngModel)]="editingRecipe.sku" class="form-input" placeholder="Enter SKU (optional)">
+          </div>
+          <div class="form-group" style="flex: 1;">
             <label>STD Yield (kg) *</label>
             <input type="number" [(ngModel)]="editingRecipe.stdYield" class="form-input" min="0" step="0.1" required>
           </div>
