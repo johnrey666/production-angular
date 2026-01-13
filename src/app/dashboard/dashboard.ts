@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 import * as XLSX from 'xlsx';
+import * as docx from 'docx';
+import { saveAs } from 'file-saver';
 import { SupabaseService } from '../services/supabase.service';
 import { Router, NavigationEnd } from '@angular/router';
 import { filter, takeUntil } from 'rxjs/operators';
@@ -156,6 +158,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loadingMessage: string = 'Loading dashboard data...';
   dataLoaded: boolean = false;
   
+  // Word export state
+  isExportingToWord: boolean = false;
+  wordExportProgress: number = 0;
+  
   // For cleanup
   private destroy$ = new Subject<void>();
   private isInitialLoad: boolean = true;
@@ -283,7 +289,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     await this.loadDashboardData();
   }
 
-  // FIXED: Month change handler
   async onMonthChange() {
     console.log('Month changed to:', this.selectedMonth, this.months[this.selectedMonth - 1].label);
     
@@ -322,7 +327,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  // FIXED: Year change handler
   async onYearChange() {
     console.log('Year changed to:', this.selectedYear);
     
@@ -528,7 +532,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  // NEW: Load raw materials directly from materials table
   private async loadRawMaterials(): Promise<any[]> {
     try {
       const { data, error } = await this.supabase['supabase']
@@ -549,7 +552,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  // NEW: Calculate top product and total batches
   private async calculateTopProductAndTotalBatches() {
     try {
       const year = this.selectedYear;
@@ -856,6 +858,1053 @@ export class DashboardComponent implements OnInit, OnDestroy {
   getProgressPercentage(value: number): string {
     if (this.maxActualRawMat === 0) return '0%';
     return ((value / this.maxActualRawMat) * 100) + '%';
+  }
+
+  // ===== NEW WORD EXPORT METHODS =====
+
+  async exportEntireDashboardToWord() {
+    if (this.isLoading) {
+      alert('Please wait for data to load before exporting.');
+      return;
+    }
+
+    this.isExportingToWord = true;
+    this.wordExportProgress = 10;
+    this.cdr.detectChanges();
+    
+    try {
+      this.wordExportProgress = 30;
+      
+      // Get all data that's currently displayed
+      const dashboardData = this.getDashboardDataForExport();
+      
+      // Create document
+      const doc = await this.createCompleteDashboardDocument(dashboardData);
+      
+      this.wordExportProgress = 80;
+      this.cdr.detectChanges();
+
+      // Generate document
+      docx.Packer.toBlob(doc).then(blob => {
+        const monthStr = this.selectedMonth.toString().padStart(2, '0');
+        const fileName = `Complete_Dashboard_Report_${this.selectedYear}_${monthStr}.docx`;
+        
+        saveAs(blob, fileName);
+        
+        console.log('Exported complete dashboard to Word document');
+        
+        this.wordExportProgress = 100;
+        this.cdr.detectChanges();
+        
+        // Delay hiding the overlay to show completion
+        setTimeout(() => {
+          this.isExportingToWord = false;
+          this.wordExportProgress = 0;
+          this.cdr.detectChanges();
+        }, 500);
+      });
+
+    } catch (error) {
+      console.error('Word export error:', error);
+      alert('Failed to export dashboard. Please try again.');
+      this.isExportingToWord = false;
+      this.wordExportProgress = 0;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // Get all dashboard data for export
+  private getDashboardDataForExport() {
+    // Calculate production totals
+    const productionTotals = this.filteredMonthlySummary.reduce(
+      (acc, item) => ({
+        rawMat: acc.rawMat + item.actualRawMat,
+        output: acc.output + item.actualOutput,
+        variance: acc.variance + item.variance,
+        cost: acc.cost + item.rawMatCost
+      }),
+      { rawMat: 0, output: 0, variance: 0, cost: 0 }
+    );
+
+    // Get current page data
+    const currentPageData = this.paginatedMonthlySummary;
+    const currentPageTotals = {
+      rawMat: this.pageActualRawMat,
+      output: this.pageActualOutput,
+      variance: this.pageVariance,
+      cost: this.pageRawMatCost
+    };
+
+    return {
+      // Header info
+      header: {
+        title: 'Production Dashboard',
+        currentDate: this.currentDate,
+        currentMonthYear: this.currentMonthYear,
+        selectedMonth: this.months[this.selectedMonth - 1].label,
+        selectedYear: this.selectedYear
+      },
+      
+      // Summary stats
+      summaryStats: {
+        fillRate: this.allStoresFillRate,
+        fillRateTrend: this.fillRateTrend,
+        totalRecipes: this.totalRecipes,
+        totalRawMaterials: this.totalRawMaterials,
+        topProductName: this.topProductName,
+        topProductOrder: this.topProductOrder,
+        totalBatches: this.totalBatches,
+        storesReporting: this.storesReporting,
+        totalStores: this.totalStores,
+        activeSkus: this.activeSkus
+      },
+      
+      // Alerts
+      alerts: {
+        count: this.lowFillRateProducts.length,
+        items: this.lowFillRateProducts.slice(0, 5)
+      },
+      
+      // Production data
+      productionData: {
+        filteredItems: this.filteredMonthlySummary,
+        currentPageItems: currentPageData,
+        searchTerm: this.searchTerm,
+        totals: productionTotals,
+        pageTotals: currentPageTotals,
+        pagination: {
+          currentPage: this.currentPage,
+          totalPages: this.totalPages,
+          startIndex: this.startIndex + 1,
+          endIndex: this.endIndex,
+          totalItems: this.filteredMonthlySummary.length
+        }
+      }
+    };
+  }
+
+  // Create complete dashboard document
+  private async createCompleteDashboardDocument(data: any): Promise<docx.Document> {
+    const {
+      header,
+      summaryStats,
+      alerts,
+      productionData
+    } = data;
+
+    // Helper function to create a colored stat box
+    const createStatBox = (title: string, value: string | number, color: string = "2B579A") => {
+      return new docx.Paragraph({
+        children: [
+          new docx.TextRun({
+            text: title,
+            size: 20,
+            color: "666666"
+          }),
+          new docx.TextRun({
+            text: "\n" + value.toString(),
+            bold: true,
+            size: 28,
+            color: color
+          })
+        ],
+        border: {
+          top: { style: docx.BorderStyle.SINGLE, size: 2, color: color },
+          bottom: { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" },
+          left: { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" },
+          right: { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" }
+        },
+        shading: { fill: "F8F9FA" },
+        spacing: { after: 200, before: 200 }
+      });
+    };
+
+    // Helper function to create a section header
+    const createSectionHeader = (title: string, color: string = "2B579A") => {
+      return new docx.Paragraph({
+        children: [
+          new docx.TextRun({
+            text: title,
+            bold: true,
+            size: 26,
+            color: color
+          })
+        ],
+        border: {
+          bottom: { style: docx.BorderStyle.SINGLE, size: 3, color: color }
+        },
+        spacing: { after: 300, before: 400 }
+      });
+    };
+
+    this.wordExportProgress = 50;
+    this.cdr.detectChanges();
+
+    return new docx.Document({
+      sections: [{
+        properties: {
+          page: {
+            margin: {
+              top: 720,
+              right: 720,
+              bottom: 720,
+              left: 720
+            }
+          }
+        },
+        children: [
+          // HEADER SECTION
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "PRODUCTION DASHBOARD REPORT",
+                bold: true,
+                size: 36,
+                color: "1E3A8A",
+                font: "Calibri Light"
+              })
+            ],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 200 }
+          }),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: header.currentDate,
+                size: 22,
+                color: "666666"
+              })
+            ],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 400 }
+          }),
+
+          // EXECUTIVE SUMMARY
+          createSectionHeader("EXECUTIVE SUMMARY"),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: `Reporting Period: ${header.currentMonthYear}`,
+                bold: true,
+                size: 22
+              })
+            ],
+            spacing: { after: 100 }
+          }),
+
+          // Key Performance Indicators
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "KEY PERFORMANCE INDICATORS",
+                bold: true,
+                size: 20,
+                color: "2B579A"
+              })
+            ],
+            spacing: { after: 200, before: 200 }
+          }),
+
+          // Stats Grid
+          new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            borders: docx.TableBorders.NONE,
+            rows: [
+              new docx.TableRow({
+                children: [
+                  new docx.TableCell({
+                    children: [createStatBox("Overall Fill Rate", `${summaryStats.fillRate}%`, 
+                            summaryStats.fillRate >= 85 ? "107C41" : summaryStats.fillRate >= 70 ? "F59E0B" : "DC2626")],
+                    width: { size: 25, type: docx.WidthType.PERCENTAGE }
+                  }),
+                  new docx.TableCell({
+                    children: [createStatBox("Total Batches", summaryStats.totalBatches.toFixed(1), "3B82F6")],
+                    width: { size: 25, type: docx.WidthType.PERCENTAGE }
+                  }),
+                  new docx.TableCell({
+                    children: [createStatBox("Active Recipes", summaryStats.totalRecipes, "8B5CF6")],
+                    width: { size: 25, type: docx.WidthType.PERCENTAGE }
+                  }),
+                  new docx.TableCell({
+                    children: [createStatBox("Active SKUs", summaryStats.activeSkus, "EC4899")],
+                    width: { size: 25, type: docx.WidthType.PERCENTAGE }
+                  })
+                ]
+              })
+            ]
+          }),
+
+          // Trend and Additional Info
+          new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            borders: docx.TableBorders.NONE,
+            rows: [
+              new docx.TableRow({
+                children: [
+                  new docx.TableCell({
+                    children: [
+                      new docx.Paragraph({
+                        children: [
+                          new docx.TextRun({
+                            text: "Fill Rate Trend: ",
+                            size: 18,
+                            color: "666666"
+                          }),
+                          new docx.TextRun({
+                            text: `${summaryStats.fillRateTrend > 0 ? '↑ +' : summaryStats.fillRateTrend < 0 ? '↓ ' : '→ '}${summaryStats.fillRateTrend}%`,
+                            bold: true,
+                            size: 18,
+                            color: summaryStats.fillRateTrend > 0 ? "107C41" : summaryStats.fillRateTrend < 0 ? "DC2626" : "666666"
+                          })
+                        ]
+                      })
+                    ],
+                    width: { size: 33, type: docx.WidthType.PERCENTAGE }
+                  }),
+                  new docx.TableCell({
+                    children: [
+                      new docx.Paragraph({
+                        children: [
+                          new docx.TextRun({
+                            text: "Top Product: ",
+                            size: 18,
+                            color: "666666"
+                          }),
+                          new docx.TextRun({
+                            text: summaryStats.topProductName,
+                            bold: true,
+                            size: 18
+                          })
+                        ]
+                      })
+                    ],
+                    width: { size: 34, type: docx.WidthType.PERCENTAGE }
+                  }),
+                  new docx.TableCell({
+                    children: [
+                      new docx.Paragraph({
+                        children: [
+                          new docx.TextRun({
+                            text: "Stores Reporting: ",
+                            size: 18,
+                            color: "666666"
+                          }),
+                          new docx.TextRun({
+                            text: `${summaryStats.storesReporting}/${summaryStats.totalStores}`,
+                            bold: true,
+                            size: 18
+                          })
+                        ]
+                      })
+                    ],
+                    width: { size: 33, type: docx.WidthType.PERCENTAGE }
+                  })
+                ]
+              })
+            ]
+          }),
+
+          // ALERTS SECTION
+          createSectionHeader("ALERTS & NOTIFICATIONS", alerts.count > 0 ? "DC2626" : "107C41"),
+
+          ...(alerts.count > 0 ? [
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: `⚠️ ${alerts.count} Product${alerts.count > 1 ? 's' : ''} with Fill Rate Below 70%`,
+                  bold: true,
+                  size: 22,
+                  color: "DC2626"
+                })
+              ],
+              spacing: { after: 150 }
+            }),
+
+            new docx.Table({
+              width: { size: 100, type: docx.WidthType.PERCENTAGE },
+              borders: {
+                top: { style: docx.BorderStyle.SINGLE, size: 1, color: "DC2626" },
+                bottom: { style: docx.BorderStyle.SINGLE, size: 1, color: "DC2626" },
+                left: { style: docx.BorderStyle.SINGLE, size: 1, color: "FEE2E2" },
+                right: { style: docx.BorderStyle.SINGLE, size: 1, color: "FEE2E2" },
+                insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 1, color: "FEE2E2" },
+                insideVertical: { style: docx.BorderStyle.SINGLE, size: 1, color: "FEE2E2" }
+              },
+              rows: [
+                // Header
+                new docx.TableRow({
+                  children: [
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "SKU", bold: true })]
+                      })],
+                      shading: { fill: "FEE2E2" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Store", bold: true })]
+                      })],
+                      shading: { fill: "FEE2E2" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Fill Rate", bold: true })]
+                      })],
+                      shading: { fill: "FEE2E2" }
+                    })
+                  ]
+                }),
+                // Data rows
+                ...alerts.items.map((alert: { sku: string | docx.IParagraphOptions; store: string | docx.IParagraphOptions; fillRate: any; }) => 
+                  new docx.TableRow({
+                    children: [
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(alert.sku)]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(alert.store)]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph({
+                          children: [new docx.TextRun({ 
+                            text: `${alert.fillRate}%`,
+                            color: "DC2626",
+                            bold: true
+                          })]
+                        })]
+                      })
+                    ]
+                  })
+                )
+              ]
+            })
+          ] : [
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: "✅ No Active Alerts",
+                  bold: true,
+                  size: 22,
+                  color: "107C41"
+                })
+              ],
+              spacing: { after: 150 }
+            }),
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: "All systems are operating within normal parameters.",
+                  size: 18,
+                  color: "666666"
+                })
+              ]
+            })
+          ]),
+
+          // PRODUCTION DATA SECTION
+          createSectionHeader("DETAILED PRODUCTION DATA"),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: `Data Period: ${header.currentMonthYear}`,
+                size: 20
+              }),
+              new docx.TextRun({
+                text: `  |  Total Items: ${productionData.pagination.totalItems}`,
+                size: 20,
+                color: "666666"
+              }),
+              ...(productionData.searchTerm ? [
+                new docx.TextRun({
+                  text: `  |  Filtered: "${productionData.searchTerm}"`,
+                  size: 20,
+                  color: "3B82F6",
+                  bold: true
+                })
+              ] : [])
+            ],
+            spacing: { after: 200 }
+          }),
+
+          // Summary of Totals
+          new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            borders: docx.TableBorders.NONE,
+            rows: [
+              new docx.TableRow({
+                children: [
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [
+                        new docx.TextRun({
+                          text: "TOTAL RAW MATERIAL: ",
+                          size: 18,
+                          color: "666666"
+                        }),
+                        new docx.TextRun({
+                          text: productionData.totals.rawMat.toFixed(3),
+                          bold: true,
+                          size: 20
+                        })
+                      ]
+                    })],
+                    shading: { fill: "F0F9FF" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [
+                        new docx.TextRun({
+                          text: "TOTAL OUTPUT: ",
+                          size: 18,
+                          color: "666666"
+                        }),
+                        new docx.TextRun({
+                          text: productionData.totals.output.toFixed(3),
+                          bold: true,
+                          size: 20
+                        })
+                      ]
+                    })],
+                    shading: { fill: "F0F9FF" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [
+                        new docx.TextRun({
+                          text: "NET VARIANCE: ",
+                          size: 18,
+                          color: "666666"
+                        }),
+                        new docx.TextRun({
+                          text: productionData.totals.variance.toFixed(3),
+                          bold: true,
+                          size: 20,
+                          color: productionData.totals.variance > 0 ? "107C41" : 
+                                 productionData.totals.variance < 0 ? "DC2626" : "666666"
+                        })
+                      ]
+                    })],
+                    shading: { fill: "F0F9FF" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [
+                        new docx.TextRun({
+                          text: "TOTAL COST: ",
+                          size: 18,
+                          color: "666666"
+                        }),
+                        new docx.TextRun({
+                          text: `₱${productionData.totals.cost.toFixed(2)}`,
+                          bold: true,
+                          size: 20,
+                          color: "B45309"
+                        })
+                      ]
+                    })],
+                    shading: { fill: "F0F9FF" }
+                  })
+                ]
+              })
+            ]
+          }),
+
+          new docx.Paragraph({
+            spacing: { after: 300 }
+          }),
+
+          // Production Data Table
+          new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            columnWidths: [3000, 1500, 1500, 1500, 1500, 2000],
+            borders: {
+              top: { style: docx.BorderStyle.SINGLE, size: 2, color: "1E3A8A" },
+              bottom: { style: docx.BorderStyle.SINGLE, size: 2, color: "1E3A8A" },
+              left: { style: docx.BorderStyle.SINGLE, size: 1, color: "1E3A8A" },
+              right: { style: docx.BorderStyle.SINGLE, size: 1, color: "1E3A8A" },
+              insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 1, color: "E5E7EB" },
+              insideVertical: { style: docx.BorderStyle.SINGLE, size: 1, color: "E5E7EB" }
+            },
+            rows: [
+              // Header row
+              new docx.TableRow({
+                children: [
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "SKU / MATERIAL", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.LEFT
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "TYPE", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.CENTER
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "RAW MATERIAL", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.RIGHT
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "OUTPUT", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.RIGHT
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "VARIANCE", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.RIGHT
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  }),
+                  new docx.TableCell({
+                    children: [new docx.Paragraph({
+                      children: [new docx.TextRun({ 
+                        text: "COST (₱)", 
+                        bold: true,
+                        color: "FFFFFF"
+                      })],
+                      alignment: docx.AlignmentType.RIGHT
+                    })],
+                    shading: { fill: "1E3A8A" }
+                  })
+                ]
+              }),
+
+              // Data rows (limit to 50 rows to avoid huge documents)
+              ...productionData.filteredItems.slice(0, 50).map((item: { sku: any; type: any; actualRawMat: number; actualOutput: number; variance: number; rawMatCost: number; }) => 
+                new docx.TableRow({
+                  children: [
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: item.sku,
+                          size: 18
+                        })],
+                        alignment: docx.AlignmentType.LEFT
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: item.type,
+                          size: 16,
+                          color: "666666"
+                        })],
+                        alignment: docx.AlignmentType.CENTER
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: item.actualRawMat.toFixed(3),
+                          size: 18
+                        })],
+                        alignment: docx.AlignmentType.RIGHT
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: item.actualOutput.toFixed(3),
+                          size: 18
+                        })],
+                        alignment: docx.AlignmentType.RIGHT
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: item.variance.toFixed(3),
+                          size: 18,
+                          color: item.variance > 0 ? "107C41" : 
+                                 item.variance < 0 ? "DC2626" : "666666",
+                          bold: item.variance !== 0
+                        })],
+                        alignment: docx.AlignmentType.RIGHT
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: `₱${item.rawMatCost.toFixed(2)}`,
+                          size: 18,
+                          color: "B45309"
+                        })],
+                        alignment: docx.AlignmentType.RIGHT
+                      })]
+                    })
+                  ]
+                })
+              )
+            ]
+          }),
+
+          // Page info if data is truncated
+          ...(productionData.filteredItems.length > 50 ? [
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: `Note: Showing 50 of ${productionData.filteredItems.length} total items. For complete data, export to Excel.`,
+                  size: 16,
+                  color: "666666",
+                  italics: true
+                })
+              ],
+              alignment: docx.AlignmentType.CENTER,
+              spacing: { before: 200, after: 200 }
+            })
+          ] : []),
+
+          // FOOTER & NOTES
+          new docx.Paragraph({
+            spacing: { before: 400 }
+          }),
+
+          createSectionHeader("ANALYSIS & RECOMMENDATIONS", "666666"),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "Variance Analysis:",
+                bold: true,
+                size: 20
+              })
+            ],
+            spacing: { after: 100 }
+          }),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "• Positive Variance (Output > Input): ",
+                bold: true,
+                size: 18
+              }),
+              new docx.TextRun({
+                text: "Indicates efficient production with minimal waste",
+                size: 18
+              })
+            ],
+            bullet: { level: 0 }
+          }),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "• Negative Variance (Output < Input): ",
+                bold: true,
+                size: 18
+              }),
+              new docx.TextRun({
+                text: "Suggests production inefficiencies or material waste",
+                size: 18
+              })
+            ],
+            bullet: { level: 0 }
+          }),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "• Zero Variance (Output = Input): ",
+                bold: true,
+                size: 18
+              }),
+              new docx.TextRun({
+                text: "Perfect material utilization",
+                size: 18
+              })
+            ],
+            bullet: { level: 0 }
+          }),
+
+          // Generated timestamp
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: "_____________________________________________________________________________",
+                color: "CCCCCC"
+              })
+            ],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 400, after: 100 }
+          }),
+
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+                size: 14,
+                color: "999999",
+                italics: true
+              })
+            ],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 200 }
+          })
+        ]
+      }]
+    });
+  }
+
+  async exportProductionTableToWord() {
+    if (this.filteredMonthlySummary.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    this.isExportingToWord = true;
+    this.wordExportProgress = 10;
+    this.cdr.detectChanges();
+    
+    try {
+      // Calculate totals
+      const totals = this.filteredMonthlySummary.reduce(
+        (acc, item) => ({
+          rawMat: acc.rawMat + item.actualRawMat,
+          output: acc.output + item.actualOutput,
+          variance: acc.variance + item.variance,
+          cost: acc.cost + item.rawMatCost
+        }),
+        { rawMat: 0, output: 0, variance: 0, cost: 0 }
+      );
+
+      this.wordExportProgress = 30;
+      this.cdr.detectChanges();
+
+      // Create document
+      const doc = new docx.Document({
+        sections: [{
+          properties: {},
+          children: [
+            // Title
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: "PRODUCTION SUMMARY TABLE",
+                  bold: true,
+                  size: 32,
+                  font: "Calibri"
+                })
+              ],
+              alignment: docx.AlignmentType.CENTER,
+              spacing: { after: 400 }
+            }),
+
+            // Report info
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: `Period: ${this.currentMonthYear}`,
+                  size: 22
+                })
+              ],
+              spacing: { after: 100 }
+            }),
+
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+                  size: 20
+                })
+              ],
+              spacing: { after: 300 }
+            }),
+
+            // Production data table
+            new docx.Table({
+              width: { size: 100, type: docx.WidthType.PERCENTAGE },
+              borders: {
+                top: { style: docx.BorderStyle.SINGLE, size: 1, color: "000000" },
+                bottom: { style: docx.BorderStyle.SINGLE, size: 1, color: "000000" },
+                left: { style: docx.BorderStyle.SINGLE, size: 1, color: "000000" },
+                right: { style: docx.BorderStyle.SINGLE, size: 1, color: "000000" },
+                insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" },
+                insideVertical: { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" }
+              },
+              rows: [
+                // Header row
+                new docx.TableRow({
+                  children: [
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "SKU / Material", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Type", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Raw Material", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Output", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Variance", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "Cost (₱)", bold: true })]
+                      })],
+                      shading: { fill: "2B579A" }
+                    })
+                  ]
+                }),
+
+                // Data rows
+                ...this.filteredMonthlySummary.map(item => 
+                  new docx.TableRow({
+                    children: [
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(item.sku)]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(item.type)]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(item.actualRawMat.toFixed(3))]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(item.actualOutput.toFixed(3))]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph({
+                          children: [new docx.TextRun({ 
+                            text: item.variance.toFixed(3),
+                            color: item.variance > 0 ? "107C41" : item.variance < 0 ? "E81123" : "000000"
+                          })]
+                        })]
+                      }),
+                      new docx.TableCell({
+                        children: [new docx.Paragraph(`₱${item.rawMatCost.toFixed(2)}`)]
+                      })
+                    ]
+                  })
+                ),
+
+                // Totals row
+                new docx.TableRow({
+                  children: [
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: "TOTALS", bold: true })]
+                      })],
+                      columnSpan: 2
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: totals.rawMat.toFixed(3), bold: true })]
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: totals.output.toFixed(3), bold: true })]
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ 
+                          text: totals.variance.toFixed(3), 
+                          bold: true,
+                          color: totals.variance > 0 ? "107C41" : totals.variance < 0 ? "E81123" : "000000"
+                        })]
+                      })]
+                    }),
+                    new docx.TableCell({
+                      children: [new docx.Paragraph({
+                        children: [new docx.TextRun({ text: `₱${totals.cost.toFixed(2)}`, bold: true })]
+                      })]
+                    })
+                  ]
+                })
+              ]
+            })
+          ]
+        }]
+      });
+
+      this.wordExportProgress = 90;
+      this.cdr.detectChanges();
+
+      // Generate document
+      docx.Packer.toBlob(doc).then(blob => {
+        const monthStr = this.selectedMonth.toString().padStart(2, '0');
+        const fileName = `Production_Table_${this.selectedYear}_${monthStr}.docx`;
+        
+        saveAs(blob, fileName);
+        
+        console.log(`Exported ${this.filteredMonthlySummary.length} items to Word document`);
+        
+        this.wordExportProgress = 100;
+        this.cdr.detectChanges();
+        
+        // Delay hiding the overlay to show completion
+        setTimeout(() => {
+          this.isExportingToWord = false;
+          this.wordExportProgress = 0;
+          this.cdr.detectChanges();
+        }, 500);
+      });
+
+    } catch (error) {
+      console.error('Table export error:', error);
+      alert('Failed to export table. Please try again.');
+      this.isExportingToWord = false;
+      this.wordExportProgress = 0;
+      this.cdr.detectChanges();
+    }
+  }
+
+  cancelWordExport() {
+    this.isExportingToWord = false;
+    this.wordExportProgress = 0;
+    this.cdr.detectChanges();
   }
 
   exportToExcel() {

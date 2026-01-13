@@ -19,13 +19,25 @@
           <span class="period">{{ currentMonthYear }}</span>
         </div>
       </div>
-      <button class="refresh-btn" (click)="refreshData()" [disabled]="isLoading">
-        <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 4v6h-6"></path>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-        </svg>
-        <span>{{ isLoading ? 'Refreshing...' : 'Refresh' }}</span>
-      </button>
+      <div class="header-right">
+        <button class="export-full-btn" (click)="exportEntireDashboardToWord()" [disabled]="isLoading">
+          <svg class="word-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <path d="M16 13H8"></path>
+            <path d="M16 17H8"></path>
+            <path d="M10 9H8"></path>
+          </svg>
+          Export Full Dashboard to Word
+        </button>
+        <button class="refresh-btn" (click)="refreshData()" [disabled]="isLoading">
+          <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"></path>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          <span>{{ isLoading ? 'Refreshing...' : 'Refresh' }}</span>
+        </button>
+      </div>
     </header>
 
     <!-- Summary Stats -->
@@ -146,8 +158,24 @@
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
           </div>
-          <button class="export-btn" (click)="exportToExcel()" [disabled]="monthlySummary.length === 0">
-            Export
+          <button class="export-btn" (click)="exportProductionTableToWord()" [disabled]="monthlySummary.length === 0">
+            <svg class="word-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M16 13H8"></path>
+              <path d="M16 17H8"></path>
+              <path d="M10 9H8"></path>
+            </svg>
+            Export Table
+          </button>
+          <button class="export-btn excel-btn" (click)="exportToExcel()" [disabled]="monthlySummary.length === 0">
+            <svg class="excel-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M9 15l3-3 3 3"></path>
+              <line x1="12" y1="12" x2="12" y2="21"></line>
+            </svg>
+            Export to Excel
           </button>
         </div>
       </div>
@@ -246,6 +274,29 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Word Export Loading Overlay -->
+  <div class="word-export-overlay" *ngIf="isExportingToWord">
+    <div class="word-export-content">
+      <div class="word-export-spinner"></div>
+      <h3 style="margin-bottom: 10px; color: #1f2937;">Generating Dashboard Report</h3>
+      <p style="margin-bottom: 20px; color: #6b7280; font-size: 14px;">
+        Please wait while we compile your complete dashboard report...
+      </p>
+      <div style="background: #e5e7eb; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: 20px;">
+        <div [style.width]="wordExportProgress + '%'" 
+             style="background: #3b82f6; height: 100%; transition: width 0.3s ease;"></div>
+      </div>
+      <div style="font-size: 12px; color: #6b7280; margin-bottom: 15px;">
+        {{ wordExportProgress }}% Complete
+      </div>
+      <button class="export-btn" 
+              (click)="cancelWordExport()" 
+              style="background: #6b7280; margin-top: 10px;">
+        Cancel
+      </button>
     </div>
   </div>
 </div>

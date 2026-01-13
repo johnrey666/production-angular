@@ -35,7 +35,9 @@
     "@angular/ssr": "^21.0.1",
     "@supabase/supabase-js": "^2.86.0",
     "@types/xlsx": "^0.0.35",
+    "docx": "^9.5.1",
     "express": "^5.1.0",
+    "file-saver": "^2.0.5",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "xlsx": "^0.18.5"
@@ -45,6 +47,7 @@
     "@angular/cli": "^21.0.1",
     "@angular/compiler-cli": "^21.0.0",
     "@types/express": "^5.0.1",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^20.17.19",
     "jsdom": "^27.1.0",
     "typescript": "~5.9.2",
