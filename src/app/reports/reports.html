@@ -32,15 +32,15 @@
   <!-- Header -->
   <div class="page-header">
     <div>
-      <h1>Weekly Production Reports</h1>
-      <p class="compact-subtitle">Track weekly production data</p>
+      <h1>Daily Production Reports</h1>
+      <p class="compact-subtitle">Track daily production data</p>
     </div>
     <div class="header-actions">
-      <!-- Clear All button for selected week -->
+      <!-- Clear All button for selected date -->
       <button class="btn-danger btn-compact" 
               (click)="clearAllLocationsData()" 
-              title="Clear All Data for Selected Week" 
-              [disabled]="!selectedWeek || isLoading">
+              title="Clear All Data for Selected Date" 
+              [disabled]="!selectedDate || isLoading">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"></polyline>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -103,10 +103,10 @@
     <!-- Header -->
     <div class="card-header compact-header">
       <div class="header-top-row compact-top-row">
-        <!-- Week Selector -->
-        <div class="week-selector compact-selector">
-          <button class="week-selector-btn compact-btn" 
-                  (click)="toggleWeekSelector($event)" 
+        <!-- Date Selector -->
+        <div class="date-selector compact-selector">
+          <button class="date-selector-btn compact-btn" 
+                  (click)="toggleDateSelector($event)" 
                   [disabled]="isLoading">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -114,30 +114,69 @@
               <line x1="8" y1="2" x2="8" y2="6"></line>
               <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            <span class="week-selector-text compact-text">
-              {{ selectedWeek?.label || 'Select Week' }}
+            <span class="date-selector-text compact-text">
+              {{ formatDate(selectedDate) || 'Select Date' }}
             </span>
             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </button>
           
-          <!-- Week Dropdown -->
-          <div class="week-dropdown compact-dropdown" 
-               *ngIf="showWeekSelector" 
+          <!-- Date Dropdown -->
+          <div class="date-dropdown compact-dropdown" 
+               *ngIf="showDateSelector" 
                (click)="$event.stopPropagation()"
-               [class.show]="showWeekSelector">
-            <div class="week-dropdown-header compact-dropdown-header">
-              <h4 class="compact-dropdown-title">Select Week</h4>
-              <button class="week-dropdown-close compact-close" 
-                      (click)="showWeekSelector = false; $event.stopPropagation()">×</button>
+               [class.show]="showDateSelector">
+            <div class="date-dropdown-header compact-dropdown-header">
+              <h4 class="compact-dropdown-title">Select Date</h4>
+              <button class="date-dropdown-close compact-close" 
+                      (click)="showDateSelector = false; $event.stopPropagation()">×</button>
             </div>
-            <div class="week-list compact-list">
-              <div *ngFor="let week of availableWeeks" 
-                   class="week-option compact-option"
-                   [class.selected]="selectedWeek?.weekStartDate === week.weekStartDate"
-                   (click)="onWeekChange(week); $event.stopPropagation()">
-                {{ week.label }}
+            
+            <!-- Calendar -->
+            <div class="calendar-container">
+              <div class="calendar-header">
+                <button class="calendar-nav-btn" (click)="prevMonth()">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <div class="calendar-month-year">
+                  <span class="calendar-month">{{ getMonthName(currentMonth) }}</span>
+                  <span class="calendar-year">{{ currentYear }}</span>
+                </div>
+                <button class="calendar-nav-btn" (click)="nextMonth()">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+              
+              <div class="calendar-weekdays">
+                <div class="weekday">S</div>
+                <div class="weekday">M</div>
+                <div class="weekday">T</div>
+                <div class="weekday">W</div>
+                <div class="weekday">T</div>
+                <div class="weekday">F</div>
+                <div class="weekday">S</div>
+              </div>
+              
+              <div class="calendar-days">
+                <div *ngFor="let day of calendarDays" 
+                     class="day"
+                     [class.empty]="day === 0"
+                     [class.today]="isToday(day)"
+                     [class.selected]="isSelected(day)"
+                     (click)="selectDateFromCalendar(day); $event.stopPropagation()">
+                  {{ day === 0 ? '' : day }}
+                </div>
+              </div>
+              
+              <div class="calendar-quick-actions">
+                <button class="quick-action-btn" (click)="selectToday(); $event.stopPropagation()">Today</button>
+                <button class="quick-action-btn" (click)="selectYesterday(); $event.stopPropagation()">Yesterday</button>
+                <button class="quick-action-btn" (click)="selectLastWeek(); $event.stopPropagation()">Last 7 Days</button>
               </div>
             </div>
           </div>
@@ -372,9 +411,9 @@
           </button>
           
           <button class="btn-secondary btn-compact" 
-                  (click)="copyFromPreviousWeek()" 
+                  (click)="copyFromPreviousDay()" 
                   [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoading"
-                  title="Copy from previous week">
+                  title="Copy from previous day">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -383,7 +422,7 @@
           </button>
 
           <button class="btn-secondary btn-compact" 
-                  (click)="initializeWeekWithAllSkus()" 
+                  (click)="initializeDateWithAllSkus()" 
                   [disabled]="!selectedStore || selectedStore === 'All' || selectedStore === 'custom' || isLoadingCatalog || isLoading"
                   title="Initialize with all SKUs">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -409,28 +448,28 @@
       </div>
     </div>
 
-    <!-- Week Info Banner (compact) -->
-    <div *ngIf="selectedWeek" class="week-info-banner compact-info">
-      <div class="week-info-content">
+    <!-- Date Info Banner (compact) -->
+    <div *ngIf="selectedDate" class="date-info-banner compact-info">
+      <div class="date-info-content">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
           <line x1="16" y1="2" x2="16" y2="6"></line>
           <line x1="8" y1="2" x2="8" y2="6"></line>
           <line x1="3" y1="10" x2="21" y2="10"></line>
         </svg>
-        <div class="week-info-details compact-details">
-          <div class="week-info-title compact-title">
-            <strong>Week {{ selectedWeek.weekNumber }}, {{ selectedWeek.year }}</strong>
-            <span class="week-date-range compact-date">{{ formatDate(selectedWeek.weekStartDate) }} - {{ formatDate(selectedWeek.weekEndDate) }}</span>
+        <div class="date-info-details compact-details">
+          <div class="date-info-title compact-title">
+            <strong>{{ formatDate(selectedDate) }}</strong>
+            <span class="date-day compact-day">{{ getDayOfWeek(selectedDate) }}</span>
           </div>
-          <div class="week-info-stats compact-stats">
-            <span class="week-stat compact-stat">
+          <div class="date-info-stats compact-stats">
+            <span class="date-stat compact-stat">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
               </svg>
               {{ allReportData.size }} stores
             </span>
-            <span class="week-stat compact-stat">
+            <span class="date-stat compact-stat">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
               </svg>
@@ -484,7 +523,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
             </svg>
-            Aggregated View - All Locations - Week {{ selectedWeek?.weekNumber }}
+            Aggregated View - All Locations - {{ formatDate(selectedDate) }}
           </h3>
           <div class="aggregated-stats compact-aggregated-stats">
             <span class="stat-badge compact-stat-badge">
@@ -518,7 +557,7 @@
                   <div style="text-align: center; padding: 30px;">
                     <div style="font-size: 24px; margin-bottom: 8px; color: #9ca3af;">📊</div>
                     <h4 style="color: #374151; margin-bottom: 4px; font-size: 14px;">No Aggregated Data</h4>
-                    <p style="color: #6b7280; font-size: 12px;">Add products to locations for this week</p>
+                    <p style="color: #6b7280; font-size: 12px;">Add products to locations for this date</p>
                   </div>
                 </td>
               </tr>
@@ -821,11 +860,11 @@
           </div>
           
           <div class="form-group compact-form-group">
-            <label class="compact-label">Week</label>
+            <label class="compact-label">Date</label>
             <div class="form-input-static compact-static">
-              Week {{ selectedWeek?.weekNumber }}, {{ selectedWeek?.year }}
+              {{ formatDate(selectedDate) }}
               <br>
-              <small class="compact-small">{{ formatDate(selectedWeek?.weekStartDate || '') }} - {{ formatDate(selectedWeek?.weekEndDate || '') }}</small>
+              <small class="compact-small">{{ getDayOfWeek(selectedDate) }}</small>
             </div>
           </div>
           
@@ -921,9 +960,9 @@
     </div>
   </div>
 
-  <!-- Week Dropdown Overlay -->
-  <div class="week-dropdown-overlay" 
-       *ngIf="showWeekSelector" 
+  <!-- Date Dropdown Overlay -->
+  <div class="date-dropdown-overlay" 
+       *ngIf="showDateSelector" 
        (click)="closeAllDropdowns()"></div>
   
   <!-- Location Dropdown Overlay -->

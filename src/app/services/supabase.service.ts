@@ -1163,4 +1163,23 @@ export class SupabaseService {
       return false;
     }
   }
+  // Add this method to the SupabaseService class
+async deleteProductionLogsByDateRange(startDate: string, endDate: string): Promise<boolean> {
+  try {
+    const { error } = await this.supabase
+      .from('production_logs')
+      .delete()
+      .gte('date', startDate)
+      .lte('date', endDate);
+    
+    if (error) {
+      console.error('Supabase error in deleteProductionLogsByDateRange:', error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error in deleteProductionLogsByDateRange:', error);
+    return false;
+  }
+}
 }

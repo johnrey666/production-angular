@@ -17,10 +17,7 @@ interface ReportItem {
   undelivered: number;
   fillRate: number;
   remarks: string;
-  weekStartDate: string;
-  weekEndDate: string;
-  weekNumber: number;
-  year: number;
+  productionDate: string;
   created_at?: string;
 }
 
@@ -37,10 +34,7 @@ interface AggregatedItem {
   storeCount: number;
   remarks: string;
   stores: string[];
-  weekStartDate: string;
-  weekEndDate: string;
-  weekNumber: number;
-  year: number;
+  productionDate: string;
 }
 
 interface DatabaseReportItem {
@@ -56,20 +50,9 @@ interface DatabaseReportItem {
   undelivered: number;
   fill_rate: number;
   remarks: string;
-  week_start_date: string;
-  week_end_date: string;
-  week_number: number;
-  year: number;
+  production_date: string;
   created_at?: string;
   updated_at?: string;
-}
-
-interface WeekOption {
-  label: string;
-  weekStartDate: string;
-  weekEndDate: string;
-  weekNumber: number;
-  year: number;
 }
 
 interface SkuCatalogItem {
@@ -188,16 +171,14 @@ export class ReportsComponent implements OnInit {
   selectedLocationPath: string = 'Select Location';
   isLocationHovered = false;
   
-  // Week management
-  selectedWeek: WeekOption | null = null;
-  availableWeeks: WeekOption[] = [];
-  showWeekSelector = false;
+  // Date management
+  selectedDate: string = new Date().toISOString().split('T')[0];
+  showDateSelector = false;
   
-  // Date range for current week
-  currentWeekStartDate: string;
-  currentWeekEndDate: string;
-  currentWeekNumber: number;
+  // Calendar state
+  currentMonth: number;
   currentYear: number;
+  calendarDays: number[] = [];
   
   // Product types
   productTypes: string[] = [
@@ -254,18 +235,16 @@ export class ReportsComponent implements OnInit {
     private cdr: ChangeDetectorRef,
     private supabase: SupabaseService
   ) {
-    // Initialize current week
-    const currentWeek = this.getCurrentWeek();
-    this.currentWeekStartDate = currentWeek.weekStartDate;
-    this.currentWeekEndDate = currentWeek.weekEndDate;
-    this.currentWeekNumber = currentWeek.weekNumber;
-    this.currentYear = currentWeek.year;
+    // Initialize with today's date
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    this.selectedDate = `${year}-${month}-${day}`;
     
-    // Set selected week to current week by default
-    this.selectedWeek = {
-      label: `Week ${currentWeek.weekNumber}, ${currentWeek.year} (${this.formatDate(currentWeek.weekStartDate)} - ${this.formatDate(currentWeek.weekEndDate)})`,
-      ...currentWeek
-    };
+    // Initialize calendar
+    this.currentMonth = today.getMonth();
+    this.currentYear = today.getFullYear();
   }
 
   ngOnInit() {
@@ -274,15 +253,168 @@ export class ReportsComponent implements OnInit {
         this.loadSkuCatalog().then(() => this.loadReportsFromDatabase());
       }
     });
+    
+    // Initialize calendar
+    this.generateCalendar();
   }
 
-  // ==================== WEEK DROPDOWN FIXES ====================
+  // ==================== DATE SELECTOR & CALENDAR ====================
   
-  toggleWeekSelector(event: Event) {
+  toggleDateSelector(event: Event) {
     event.stopPropagation();
-    this.showWeekSelector = !this.showWeekSelector;
-    this.showLocationDropdown = false; // Close location dropdown if open
+    this.showDateSelector = !this.showDateSelector;
+    this.showLocationDropdown = false;
+    this.generateCalendar();
     this.cdr.detectChanges();
+  }
+
+  generateCalendar() {
+    const firstDay = new Date(this.currentYear, this.currentMonth, 1);
+    const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
+    
+    const firstDayOfWeek = firstDay.getDay();
+    const totalDays = lastDay.getDate();
+    
+    this.calendarDays = [];
+    
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      this.calendarDays.push(0);
+    }
+    
+    for (let i = 1; i <= totalDays; i++) {
+      this.calendarDays.push(i);
+    }
+  }
+
+  prevMonth() {
+    if (this.currentMonth === 0) {
+      this.currentMonth = 11;
+      this.currentYear--;
+    } else {
+      this.currentMonth--;
+    }
+    this.generateCalendar();
+    this.cdr.detectChanges();
+  }
+
+  nextMonth() {
+    if (this.currentMonth === 11) {
+      this.currentMonth = 0;
+      this.currentYear++;
+    } else {
+      this.currentMonth++;
+    }
+    this.generateCalendar();
+    this.cdr.detectChanges();
+  }
+
+  getMonthName(month: number): string {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[month];
+  }
+
+  formatDate(dateString: string): string {
+    if (!dateString) return '';
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  getDayOfWeek(dateString: string): string {
+    if (!dateString) return '';
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[date.getDay()];
+  }
+
+  isToday(day: number): boolean {
+    if (day === 0) return false;
+    
+    const today = new Date();
+    return today.getFullYear() === this.currentYear &&
+           today.getMonth() === this.currentMonth &&
+           today.getDate() === day;
+  }
+
+  isSelected(day: number): boolean {
+    if (day === 0) return false;
+    
+    if (!this.selectedDate) return false;
+    
+    const [selectedYear, selectedMonth, selectedDay] = this.selectedDate.split('-').map(Number);
+    return selectedYear === this.currentYear &&
+           selectedMonth - 1 === this.currentMonth &&
+           selectedDay === day;
+  }
+
+  selectDateFromCalendar(day: number) {
+    if (day === 0) return;
+    
+    // Create date in local timezone
+    const year = this.currentYear;
+    const month = this.currentMonth + 1; // JavaScript months are 0-based
+    const date = day;
+    
+    // Format as YYYY-MM-DD
+    const newDate = `${year}-${month.toString().padStart(2, '0')}-${date.toString().padStart(2, '0')}`;
+    
+    if (this.selectedDate !== newDate) {
+      this.selectedDate = newDate;
+      this.showDateSelector = false;
+      this.onDateChange();
+    }
+  }
+
+  selectToday() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    
+    this.selectedDate = `${year}-${month}-${day}`;
+    this.currentMonth = today.getMonth();
+    this.currentYear = today.getFullYear();
+    this.generateCalendar();
+    this.showDateSelector = false;
+    this.onDateChange();
+  }
+
+  selectYesterday() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const year = yesterday.getFullYear();
+    const month = (yesterday.getMonth() + 1).toString().padStart(2, '0');
+    const day = yesterday.getDate().toString().padStart(2, '0');
+    
+    this.selectedDate = `${year}-${month}-${day}`;
+    this.currentMonth = yesterday.getMonth();
+    this.currentYear = yesterday.getFullYear();
+    this.generateCalendar();
+    this.showDateSelector = false;
+    this.onDateChange();
+  }
+
+  selectLastWeek() {
+    const lastWeek = new Date();
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    const year = lastWeek.getFullYear();
+    const month = (lastWeek.getMonth() + 1).toString().padStart(2, '0');
+    const day = lastWeek.getDate().toString().padStart(2, '0');
+    
+    this.selectedDate = `${year}-${month}-${day}`;
+    this.currentMonth = lastWeek.getMonth();
+    this.currentYear = lastWeek.getFullYear();
+    this.generateCalendar();
+    this.showDateSelector = false;
+    this.onDateChange();
   }
 
   // ==================== LOCATION DROPDOWN METHODS ====================
@@ -290,19 +422,17 @@ export class ReportsComponent implements OnInit {
   toggleLocationDropdown(event: Event) {
     event.stopPropagation();
     this.showLocationDropdown = !this.showLocationDropdown;
-    this.showWeekSelector = false; // Close week selector if open
+    this.showDateSelector = false;
     this.cdr.detectChanges();
   }
 
   selectLocation(node: LocationNode, event: Event) {
     event.stopPropagation();
     
-    // If it has children, toggle expand/collapse
     if (node.children && node.children.length > 0) {
       node.expanded = !node.expanded;
       this.cdr.detectChanges();
     } else {
-      // If it's a leaf node, select it
       this.selectedStore = node.value;
       this.selectedLocationPath = this.getLocationDisplayName();
       this.showLocationDropdown = false;
@@ -321,7 +451,6 @@ export class ReportsComponent implements OnInit {
     if (!this.selectedStore) return 'Select Location';
     if (this.selectedStore === 'All') return 'All Locations';
     
-    // Find the node in the tree
     const node = this.findNodeInTree(this.selectedStore);
     return node ? node.name : this.selectedStore;
   }
@@ -343,24 +472,22 @@ export class ReportsComponent implements OnInit {
   // ==================== DROPDOWN MANAGEMENT ====================
   
   closeAllDropdowns() {
-    this.showWeekSelector = false;
+    this.showDateSelector = false;
     this.showLocationDropdown = false;
     this.cdr.detectChanges();
   }
 
-  // Close dropdowns when clicking outside
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event) {
-    // Only close dropdowns if click is outside both dropdowns
     const target = event.target as HTMLElement;
-    const isWeekSelector = target.closest('.week-selector');
-    const isWeekDropdown = target.closest('.week-dropdown');
+    const isDateSelector = target.closest('.date-selector');
+    const isDateDropdown = target.closest('.date-dropdown');
     const isLocationSelector = target.closest('.location-selector');
     const isLocationDropdown = target.closest('.location-tree-dropdown');
-    const isOverlay = target.closest('.week-dropdown-overlay') || target.closest('.location-dropdown-overlay');
+    const isOverlay = target.closest('.date-dropdown-overlay') || target.closest('.location-dropdown-overlay');
     
-    if (this.showWeekSelector && !isWeekSelector && !isWeekDropdown && !isOverlay) {
-      this.showWeekSelector = false;
+    if (this.showDateSelector && !isDateSelector && !isDateDropdown && !isOverlay) {
+      this.showDateSelector = false;
       this.cdr.detectChanges();
     }
     
@@ -425,16 +552,16 @@ export class ReportsComponent implements OnInit {
     if (item.type) this.currentProduct.type = item.type;
   }
 
-  // ==================== WEEK INITIALIZATION ====================
+  // ==================== DATE INITIALIZATION ====================
   
-  async initializeWeekWithAllSkus() {
+  async initializeDateWithAllSkus() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
       return;
     }
 
-    if (!this.selectedWeek) {
-      this.showSnackbar('Please select a week first', 'warning');
+    if (!this.selectedDate) {
+      this.showSnackbar('Please select a date first', 'warning');
       return;
     }
 
@@ -443,13 +570,13 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!confirm(`Initialize Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} for ${this.selectedStore} with all SKUs? This may take a moment.`)) {
+    if (!confirm(`Initialize ${this.formatDate(this.selectedDate)} for ${this.selectedStore} with all SKUs? This may take a moment.`)) {
       return;
     }
 
     this.isInitializing = true;
     this.isLoading = true;
-    this.loadingMessage = 'Initializing week with all SKUs...';
+    this.loadingMessage = 'Initializing date with all SKUs...';
     this.loadingProgress = '0%';
     
     try {
@@ -472,7 +599,7 @@ export class ReportsComponent implements OnInit {
           this.loadingProgress = `${progressPercentage}% (${processedCount}/${totalSkus})`;
           this.cdr.detectChanges();
           
-          const exists = storeData.some(p => p.sku === skuItem.sku && p.weekStartDate === this.selectedWeek!.weekStartDate && p.weekEndDate === this.selectedWeek!.weekEndDate);
+          const exists = storeData.some(p => p.sku === skuItem.sku && p.productionDate === this.selectedDate);
           if (exists) {
             skippedCount++;
             continue;
@@ -490,10 +617,7 @@ export class ReportsComponent implements OnInit {
             undelivered: 0,
             fillRate: 0,
             remarks: '',
-            weekStartDate: this.selectedWeek.weekStartDate,
-            weekEndDate: this.selectedWeek.weekEndDate,
-            weekNumber: this.selectedWeek.weekNumber,
-            year: this.selectedWeek.year
+            productionDate: this.selectedDate
           };
           
           try {
@@ -516,11 +640,11 @@ export class ReportsComponent implements OnInit {
       this.allReportData.set(this.selectedStore, storeData);
       this.originalReportData.set(this.selectedStore, originalStoreData);
       
-      this.showSnackbar(`Week initialized with ${insertedCount} SKUs (${skippedCount} already existed)`, 'success');
+      this.showSnackbar(`Date initialized with ${insertedCount} SKUs (${skippedCount} already existed)`, 'success');
       this.loadStoreData();
     } catch (err) {
-      console.error('Error initializing week:', err);
-      this.showSnackbar('Failed to initialize week', 'error');
+      console.error('Error initializing date:', err);
+      this.showSnackbar('Failed to initialize date', 'error');
     } finally {
       this.isInitializing = false;
       this.isLoading = false;
@@ -551,15 +675,15 @@ export class ReportsComponent implements OnInit {
   }
 
   async clearAllLocationsData() {
-    if (!this.selectedWeek) {
-      this.showSnackbar('Please select a week first', 'warning');
+    if (!this.selectedDate) {
+      this.showSnackbar('Please select a date first', 'warning');
       return;
     }
 
     const message = `🚨 CLEAR ALL DATA FOR ALL LOCATIONS\n\n` +
-      `Week: ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year}\n` +
-      `Date Range: ${this.formatDate(this.selectedWeek.weekStartDate)} - ${this.formatDate(this.selectedWeek.weekEndDate)}\n\n` +
-      `⚠️  This will permanently delete ALL production data for ALL locations for this week.\n` +
+      `Date: ${this.formatDate(this.selectedDate)}\n` +
+      `Day: ${this.getDayOfWeek(this.selectedDate)}\n\n` +
+      `⚠️  This will permanently delete ALL production data for ALL locations for this date.\n` +
       `⚠️  This action cannot be undone!\n\n` +
       `Type "DELETE ALL" to confirm:`;
 
@@ -580,63 +704,51 @@ export class ReportsComponent implements OnInit {
     this.cdr.detectChanges();
     
     try {
-      // Delete all data for the selected week from database
       const { error } = await this.supabase['supabase']
         .from('production_reports')
         .delete()
-        .eq('week_start_date', this.selectedWeek.weekStartDate)
-        .eq('week_end_date', this.selectedWeek.weekEndDate);
+        .eq('production_date', this.selectedDate);
 
       if (error) {
         throw error;
       }
 
-      console.log(`Successfully deleted data for week ${this.selectedWeek.weekNumber}`);
+      console.log(`Successfully deleted data for date ${this.selectedDate}`);
 
-      // Create new maps to avoid reference issues
       const newOriginalData = new Map<string, ReportItem[]>();
       const newAllReportData = new Map<string, ReportItem[]>();
       
-      // Filter out items for the selected week from original data
       this.originalReportData.forEach((storeItems, storeName) => {
         const remainingItems = storeItems.filter(item => 
-          item.weekStartDate !== this.selectedWeek!.weekStartDate ||
-          item.weekEndDate !== this.selectedWeek!.weekEndDate
+          item.productionDate !== this.selectedDate
         );
         
         newOriginalData.set(storeName, remainingItems);
         newAllReportData.set(storeName, []);
       });
       
-      // Update the main data structures
       this.originalReportData = newOriginalData;
       this.allReportData = newAllReportData;
 
-      // Clear aggregated data
       this.aggregatedData = [];
       this.displayedAggregatedData = [];
       this.filteredAggregatedData = [];
       
-      // Clear displayed data
       this.displayedData = [];
       this.filteredStoreData = [];
       
-      // Reset pagination
       this.currentPage = 1;
       this.totalPages = 1;
       this.startIndex = 0;
       this.endIndex = 0;
 
-      // Force UI update
       this.cdr.detectChanges();
 
-      // Show success message
       this.showSnackbar(
-        `✅ Successfully cleared ALL data for Week ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year}`,
+        `✅ Successfully cleared ALL data for ${this.formatDate(this.selectedDate)}`,
         'success'
       );
 
-      // Reload current view based on selection
       if (this.selectedStore === 'All') {
         this.calculateAggregatedData();
         this.applyAggregatedFilters();
@@ -656,109 +768,6 @@ export class ReportsComponent implements OnInit {
       this.loadingMessage = '';
       this.cdr.detectChanges();
     }
-  }
-
-  // ==================== DATE & WEEK METHODS ====================
-  
-  getCurrentWeek(): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
-    const today = new Date();
-    const year = today.getFullYear();
-    
-    const startOfWeek = new Date(today);
-    const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-    startOfWeek.setDate(diff);
-    
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    
-    const firstDayOfYear = new Date(year, 0, 1);
-    const pastDaysOfYear = (today.getTime() - firstDayOfYear.getTime()) / 86400000;
-    const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-    
-    return {
-      weekStartDate: startOfWeek.toISOString().split('T')[0],
-      weekEndDate: endOfWeek.toISOString().split('T')[0],
-      weekNumber: weekNumber,
-      year: year
-    };
-  }
-
-  formatDate(dateString: string): string {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
-
-  generateWeekOptions() {
-    const weeks: WeekOption[] = [];
-    const today = new Date();
-    const currentWeek = this.getCurrentWeek();
-    
-    weeks.push({
-      label: `Current Week: ${this.formatDate(currentWeek.weekStartDate)} - ${this.formatDate(currentWeek.weekEndDate)}`,
-      weekStartDate: currentWeek.weekStartDate,
-      weekEndDate: currentWeek.weekEndDate,
-      weekNumber: currentWeek.weekNumber,
-      year: currentWeek.year
-    });
-    
-    for (let i = 1; i <= 12; i++) {
-      const date = new Date(currentWeek.weekStartDate);
-      date.setDate(date.getDate() - (i * 7));
-      const pastWeek = this.getWeekForDate(date);
-      
-      weeks.push({
-        label: `Week ${pastWeek.weekNumber}, ${pastWeek.year} (${this.formatDate(pastWeek.weekStartDate)} - ${this.formatDate(pastWeek.weekEndDate)})`,
-        weekStartDate: pastWeek.weekStartDate,
-        weekEndDate: pastWeek.weekEndDate,
-        weekNumber: pastWeek.weekNumber,
-        year: pastWeek.year
-      });
-    }
-    
-    for (let i = 1; i <= 4; i++) {
-      const date = new Date(currentWeek.weekStartDate);
-      date.setDate(date.getDate() + (i * 7));
-      const futureWeek = this.getWeekForDate(date);
-      
-      weeks.push({
-        label: `Week ${futureWeek.weekNumber}, ${futureWeek.year} (${this.formatDate(futureWeek.weekStartDate)} - ${this.formatDate(futureWeek.weekEndDate)})`,
-        weekStartDate: futureWeek.weekStartDate,
-        weekEndDate: futureWeek.weekEndDate,
-        weekNumber: futureWeek.weekNumber,
-        year: futureWeek.year
-      });
-    }
-    
-    this.availableWeeks = weeks;
-  }
-
-  getWeekForDate(date: Date): { weekStartDate: string, weekEndDate: string, weekNumber: number, year: number } {
-    const year = date.getFullYear();
-    
-    const startOfWeek = new Date(date);
-    const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-    startOfWeek.setDate(diff);
-    
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    
-    const firstDayOfYear = new Date(year, 0, 1);
-    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
-    const weekNumber = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-    
-    return {
-      weekStartDate: startOfWeek.toISOString().split('T')[0],
-      weekEndDate: endOfWeek.toISOString().split('T')[0],
-      weekNumber: weekNumber,
-      year: year
-    };
   }
 
   // ==================== DATA LOADING ====================
@@ -816,14 +825,12 @@ export class ReportsComponent implements OnInit {
         storesWithoutAll.sort();
         this.allStores = ['All', ...storesWithoutAll];
         
-        this.generateWeekOptions();
-        this.filterDataByWeek();
+        this.filterDataByDate();
         
         this.showSnackbar(`Loaded ${data.length} production items across ${this.originalReportData.size} stores`, 'success');
         
       } else {
         this.showSnackbar('No production data found. Start by selecting a store and adding products.', 'info');
-        this.generateWeekOptions();
       }
       
     } catch (error: any) {
@@ -837,20 +844,19 @@ export class ReportsComponent implements OnInit {
 
   // ==================== DATA FILTERING ====================
   
-  filterDataByWeek() {
-    if (!this.selectedWeek) {
+  filterDataByDate() {
+    if (!this.selectedDate) {
       this.allReportData = new Map(this.originalReportData);
     } else {
       const filteredData = new Map<string, ReportItem[]>();
       
       this.originalReportData.forEach((storeItems, storeName) => {
-        const weekItems = storeItems.filter(item => 
-          item.weekStartDate === this.selectedWeek!.weekStartDate &&
-          item.weekEndDate === this.selectedWeek!.weekEndDate
+        const dateItems = storeItems.filter(item => 
+          item.productionDate === this.selectedDate
         );
         
-        if (weekItems.length > 0) {
-          filteredData.set(storeName, weekItems);
+        if (dateItems.length > 0) {
+          filteredData.set(storeName, dateItems);
         } else {
           filteredData.set(storeName, []);
         }
@@ -866,10 +872,18 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  onWeekChange(week: WeekOption) {
-    this.selectedWeek = week;
-    this.filterDataByWeek();
-    this.showWeekSelector = false;
+  onDateChange() {
+    // Ensure calendar shows correct month/year for selected date
+    if (this.selectedDate) {
+      const [year, month] = this.selectedDate.split('-').map(Number);
+      this.currentMonth = month - 1;
+      this.currentYear = year;
+      this.generateCalendar();
+    }
+    
+    this.filterDataByDate();
+    this.currentPage = 1;
+    this.searchQuery = '';
     this.cdr.detectChanges();
   }
 
@@ -925,10 +939,7 @@ export class ReportsComponent implements OnInit {
             storeCount: 0,
             remarks: '',
             stores: [],
-            weekStartDate: item.weekStartDate,
-            weekEndDate: item.weekEndDate,
-            weekNumber: item.weekNumber,
-            year: item.year
+            productionDate: item.productionDate
           });
         }
         
@@ -1015,10 +1026,7 @@ export class ReportsComponent implements OnInit {
       undelivered: dbItem.undelivered,
       fillRate: dbItem.fill_rate,
       remarks: dbItem.remarks,
-      weekStartDate: dbItem.week_start_date || this.currentWeekStartDate,
-      weekEndDate: dbItem.week_end_date || this.currentWeekEndDate,
-      weekNumber: dbItem.week_number || this.currentWeekNumber,
-      year: dbItem.year || this.currentYear,
+      productionDate: dbItem.production_date || this.selectedDate,
       created_at: dbItem.created_at
     };
   }
@@ -1036,10 +1044,7 @@ export class ReportsComponent implements OnInit {
       undelivered: localItem.undelivered,
       fill_rate: localItem.fillRate,
       remarks: localItem.remarks,
-      week_start_date: localItem.weekStartDate,
-      week_end_date: localItem.weekEndDate,
-      week_number: localItem.weekNumber,
-      year: localItem.year
+      production_date: localItem.productionDate
     };
     
     if (localItem.id) {
@@ -1122,7 +1127,7 @@ export class ReportsComponent implements OnInit {
       } else if (error.code === '23505') {
         if (!this.isInitializing) {
           this.showSnackbar(
-            `Product "${item.sku}" already exists for this store and week.`,
+            `Product "${item.sku}" already exists for this store and date.`,
             'error'
           );
         }
@@ -1162,17 +1167,15 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  async clearStoreFromDatabase(storeName: string, weekStartDate?: string, weekEndDate?: string): Promise<boolean> {
+  async clearStoreFromDatabase(storeName: string, productionDate?: string): Promise<boolean> {
     try {
       let query = this.supabase['supabase']
         .from('production_reports')
         .delete()
         .eq('store', storeName);
       
-      if (weekStartDate && weekEndDate) {
-        query = query
-          .eq('week_start_date', weekStartDate)
-          .eq('week_end_date', weekEndDate);
+      if (productionDate) {
+        query = query.eq('production_date', productionDate);
       }
       
       const { error } = await query;
@@ -1290,8 +1293,6 @@ export class ReportsComponent implements OnInit {
   // ==================== PRODUCT MANAGEMENT ====================
   
   createEmptyProduct(): ReportItem {
-    const currentWeek = this.getCurrentWeek();
-    
     return { 
       store: this.selectedStore,
       sku: '', 
@@ -1304,10 +1305,7 @@ export class ReportsComponent implements OnInit {
       undelivered: 0, 
       fillRate: 0, 
       remarks: '',
-      weekStartDate: currentWeek.weekStartDate,
-      weekEndDate: currentWeek.weekEndDate,
-      weekNumber: currentWeek.weekNumber,
-      year: currentWeek.year
+      productionDate: this.selectedDate
     };
   }
 
@@ -1452,18 +1450,15 @@ export class ReportsComponent implements OnInit {
         this.showSnackbar(`Product "${savedItem.sku}" updated successfully`, 'success');
       } else {
         if (originalStoreData.some(p => p.sku === savedItem.sku && 
-            p.weekStartDate === savedItem.weekStartDate && 
-            p.weekEndDate === savedItem.weekEndDate)) {
-          this.showSnackbar(`Product with SKU "${savedItem.sku}" already exists in this store for the selected week`, 'error');
+            p.productionDate === savedItem.productionDate)) {
+          this.showSnackbar(`Product with SKU "${savedItem.sku}" already exists in this store for the selected date`, 'error');
           return;
         }
         
         originalStoreData.unshift(savedItem);
         this.originalReportData.set(this.selectedStore, originalStoreData);
         
-        if (this.selectedWeek && 
-            savedItem.weekStartDate === this.selectedWeek.weekStartDate &&
-            savedItem.weekEndDate === this.selectedWeek.weekEndDate) {
+        if (this.selectedDate && savedItem.productionDate === this.selectedDate) {
           filteredStoreData.unshift(savedItem);
           this.allReportData.set(this.selectedStore, filteredStoreData);
         }
@@ -1482,7 +1477,7 @@ export class ReportsComponent implements OnInit {
       console.error('Error saving product:', error);
       
       if (error.code === '23505') {
-        this.showSnackbar(`Product with SKU "${this.currentProduct.sku}" already exists in database for this week`, 'error');
+        this.showSnackbar(`Product with SKU "${this.currentProduct.sku}" already exists in database for this date`, 'error');
       } else {
         this.showSnackbar('Failed to save product: ' + error.message, 'error');
       }
@@ -1490,7 +1485,7 @@ export class ReportsComponent implements OnInit {
   }
 
   async deleteProduct(product: ReportItem) {
-    if (!confirm(`Are you sure you want to delete "${product.sku}" from ${this.selectedStore} for week ${product.weekNumber}, ${product.year}?`)) return;
+    if (!confirm(`Are you sure you want to delete "${product.sku}" from ${this.selectedStore} for ${this.formatDate(product.productionDate)}?`)) return;
 
     if (!product.id) {
       this.showSnackbar('Cannot delete: Product ID not found', 'error');
@@ -1529,8 +1524,8 @@ export class ReportsComponent implements OnInit {
     }
 
     let message = `⚠️ CLEAR ALL DATA FOR ${this.selectedStore}`;
-    if (this.selectedWeek) {
-      message += `\nWeek: ${this.selectedWeek.weekNumber}, ${this.selectedWeek.year} (${this.formatDate(this.selectedWeek.weekStartDate)} - ${this.formatDate(this.selectedWeek.weekEndDate)})`;
+    if (this.selectedDate) {
+      message += `\nDate: ${this.formatDate(this.selectedDate)}`;
     }
     message += `\nThis will permanently delete ALL production data for this store.\nAre you absolutely sure?`;
 
@@ -1554,40 +1549,32 @@ export class ReportsComponent implements OnInit {
     try {
       const success = await this.clearStoreFromDatabase(
         this.selectedStore, 
-        this.selectedWeek?.weekStartDate, 
-        this.selectedWeek?.weekEndDate
+        this.selectedDate
       );
       
       if (success) {
-        // Clear from allReportData
         this.allReportData.set(this.selectedStore, []);
         
-        // Clear from originalReportData for the selected week
-        if (this.selectedWeek) {
+        if (this.selectedDate) {
           const originalItems = this.originalReportData.get(this.selectedStore) || [];
           const remainingItems = originalItems.filter(item => 
-            item.weekStartDate !== this.selectedWeek!.weekStartDate ||
-            item.weekEndDate !== this.selectedWeek!.weekEndDate
+            item.productionDate !== this.selectedDate
           );
           this.originalReportData.set(this.selectedStore, remainingItems);
         } else {
           this.originalReportData.set(this.selectedStore, []);
         }
         
-        // Clear displayed data
         this.displayedData = [];
         this.filteredStoreData = [];
         
-        // Reset pagination
         this.currentPage = 1;
         this.totalPages = 1;
         this.startIndex = 0;
         this.endIndex = 0;
         
-        // Force UI update
         this.cdr.detectChanges();
         
-        // Reload store data
         this.loadStoreData();
         this.applyFiltersAndSearch();
         
@@ -1625,10 +1612,10 @@ export class ReportsComponent implements OnInit {
     }
 
     try {
-      const weekInfo = storeData[0] ? `Week ${storeData[0].weekNumber}, ${storeData[0].year} (${this.formatDate(storeData[0].weekStartDate)} - ${this.formatDate(storeData[0].weekEndDate)})` : '';
+      const dateInfo = storeData[0] ? `${this.formatDate(storeData[0].productionDate)} (${this.getDayOfWeek(storeData[0].productionDate)})` : '';
       
       const exportData: (string | number)[][] = [
-        [`${this.selectedStore} - Production Report - ${weekInfo} - Generated ${new Date().toLocaleString()}`],
+        [`${this.selectedStore} - Daily Production Report - ${dateInfo} - Generated ${new Date().toLocaleString()}`],
         [],
         ['SKU', 'Description', 'Type', 'UM', 'Price (₱)', 'Store Order', 'Delivered', 'Undelivered', 'Fill Rate %', 'Remarks']
       ];
@@ -1674,7 +1661,7 @@ export class ReportsComponent implements OnInit {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, `${this.selectedStore} Report`);
 
-      const fileName = `${this.selectedStore.replace(/[^a-z0-9]/gi, '_')}_Week${storeData[0]?.weekNumber || ''}_Production_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+      const fileName = `${this.selectedStore.replace(/[^a-z0-9]/gi, '_')}_${this.selectedDate}_Daily_Production_Report.xlsx`;
       XLSX.writeFile(wb, fileName);
 
       this.showSnackbar(`Report exported successfully as ${fileName}`, 'success');
@@ -1691,10 +1678,10 @@ export class ReportsComponent implements OnInit {
     }
 
     try {
-      const weekInfo = this.aggregatedData[0] ? `Week ${this.aggregatedData[0].weekNumber}, ${this.aggregatedData[0].year} (${this.formatDate(this.aggregatedData[0].weekStartDate)} - ${this.formatDate(this.aggregatedData[0].weekEndDate)})` : '';
+      const dateInfo = this.aggregatedData[0] ? `${this.formatDate(this.aggregatedData[0].productionDate)} (${this.getDayOfWeek(this.aggregatedData[0].productionDate)})` : '';
       
       const exportData: (string | number)[][] = [
-        ['All Stores - Aggregated Production Report - ' + weekInfo + ' - Generated ' + new Date().toLocaleString()],
+        ['All Stores - Aggregated Daily Production Report - ' + dateInfo + ' - Generated ' + new Date().toLocaleString()],
         [],
         ['SKU', 'Description', 'Type', 'UM', 'Price (₱)', 'Store Count', 'Total Store Order', 'Total Delivered', 'Total Undelivered', 'Fill Rate %', 'Stores', 'Remarks']
       ];
@@ -1744,7 +1731,7 @@ export class ReportsComponent implements OnInit {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'All Stores Report');
 
-      const fileName = `All_Stores_Week${this.aggregatedData[0]?.weekNumber || ''}_Aggregated_Production_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+      const fileName = `All_Stores_${this.selectedDate}_Aggregated_Daily_Production_Report.xlsx`;
       XLSX.writeFile(wb, fileName);
 
       this.showSnackbar(`Aggregated report exported successfully as ${fileName}`, 'success');
@@ -1770,48 +1757,50 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  async copyFromPreviousWeek() {
+  async copyFromPreviousDay() {
     if (!this.selectedStore || this.selectedStore === 'custom' || this.selectedStore === 'All') {
       this.showSnackbar('Please select a specific store first', 'warning');
       return;
     }
 
-    if (!this.selectedWeek) {
-      this.showSnackbar('Please select a week first', 'warning');
+    if (!this.selectedDate) {
+      this.showSnackbar('Please select a date first', 'warning');
       return;
     }
 
-    const prevWeekDate = new Date(this.selectedWeek.weekStartDate);
-    prevWeekDate.setDate(prevWeekDate.getDate() - 7);
-    const prevWeek = this.getWeekForDate(prevWeekDate);
+    // Parse current date to get previous day
+    const [currentYear, currentMonth, currentDay] = this.selectedDate.split('-').map(Number);
+    const currentDate = new Date(currentYear, currentMonth - 1, currentDay);
+    currentDate.setDate(currentDate.getDate() - 1);
+    
+    const prevYear = currentDate.getFullYear();
+    const prevMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+    const prevDay = currentDate.getDate().toString().padStart(2, '0');
+    const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
 
     this.isLoading = true;
-    this.loadingMessage = 'Copying data from previous week...';
+    this.loadingMessage = 'Copying data from previous day...';
     try {
       const { data, error } = await this.supabase['supabase']
         .from('production_reports')
         .select('*')
         .eq('store', this.selectedStore)
-        .eq('week_start_date', prevWeek.weekStartDate)
-        .eq('week_end_date', prevWeek.weekEndDate);
+        .eq('production_date', prevDateStr);
 
       if (error) {
-        console.error('Error loading previous week data:', error);
-        this.showSnackbar('Failed to load previous week data: ' + error.message, 'error');
+        console.error('Error loading previous day data:', error);
+        this.showSnackbar('Failed to load previous day data: ' + error.message, 'error');
         return;
       }
 
       if (!data || data.length === 0) {
-        this.showSnackbar('No data found for the previous week', 'info');
+        this.showSnackbar('No data found for the previous day', 'info');
         return;
       }
 
       const newItems = data.map(dbItem => {
         const localItem = this.fromDatabaseFormat(dbItem);
-        localItem.weekStartDate = this.selectedWeek!.weekStartDate;
-        localItem.weekEndDate = this.selectedWeek!.weekEndDate;
-        localItem.weekNumber = this.selectedWeek!.weekNumber;
-        localItem.year = this.selectedWeek!.year;
+        localItem.productionDate = this.selectedDate;
         localItem.delivered = 0;
         localItem.undelivered = localItem.storeOrder;
         localItem.fillRate = 0;
@@ -1843,11 +1832,11 @@ export class ReportsComponent implements OnInit {
       }
 
       this.loadStoreData();
-      this.showSnackbar(`Copied ${savedCount} items from previous week`, 'success');
+      this.showSnackbar(`Copied ${savedCount} items from previous day`, 'success');
 
     } catch (error: any) {
-      console.error('Error copying previous week data:', error);
-      this.showSnackbar('Failed to copy previous week data: ' + (error?.message || String(error)), 'error');
+      console.error('Error copying previous day data:', error);
+      this.showSnackbar('Failed to copy previous day data: ' + (error?.message || String(error)), 'error');
     } finally {
       this.isLoading = false;
       this.loadingMessage = '';

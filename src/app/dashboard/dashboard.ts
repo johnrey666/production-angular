@@ -97,7 +97,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   currentMonthYear: string = '';
   
   // Summary stats
-  allStoresFillRate: number = 0;
+  allStoresFillRate: number = 0; // Changed from 85 to 0
   fillRateTrend: number = 0;
   totalRecipes: number = 0;
   totalRawMaterials: number = 0;
@@ -106,7 +106,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   totalBatches: number = 0;
   storesReporting: number = 0;
   totalStores: number = 12;
-  activeSkus: number = 31;
+  activeSkus: number = 0; // Changed from 31 to 0
   maxActualRawMat: number = 0;
   
   // Alerts
@@ -272,13 +272,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
     
     // Reset data
-    this.allStoresFillRate = 0;
+    this.allStoresFillRate = 0; // Reset to 0
     this.totalRecipes = 0;
     this.totalRawMaterials = 0;
     this.topProductName = 'Refreshing...';
     this.topProductOrder = 0;
     this.totalBatches = 0;
     this.storesReporting = 0;
+    this.activeSkus = 0; // Reset to 0
     this.lowFillRateProducts = [];
     this.monthlySummary = [];
     this.filteredMonthlySummary = [];
@@ -386,6 +387,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.monthlySummary = [];
         this.filteredMonthlySummary = [];
         this.paginatedMonthlySummary = [];
+        this.activeSkus = 0; // Set active SKUs to 0 when no data
         this.updatePagination();
         return;
       }
@@ -425,6 +427,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         item.actualRawMat > 0 || item.actualOutput > 0 || item.rawMatCost > 0
       );
       
+      // Set active SKUs count based on actual data
+      this.activeSkus = this.monthlySummary.length;
+      
       console.log(`Processed ${this.monthlySummary.length} active SKUs for ${this.currentMonthYear}`);
       
       if (this.monthlySummary.length > 0) {
@@ -440,6 +445,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.monthlySummary = [];
       this.filteredMonthlySummary = [];
       this.paginatedMonthlySummary = [];
+      this.activeSkus = 0; // Set to 0 on error
       this.updatePagination();
     }
   }
@@ -636,7 +642,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       );
       
       if (!weeklyData || weeklyData.length === 0) {
-        this.allStoresFillRate = 85;
+        // FIXED: Set to 0% when there's no data, not 85%
+        this.allStoresFillRate = 0;
         this.fillRateTrend = 0;
         return;
       }
@@ -646,7 +653,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       );
       
       if (validItems.length === 0) {
-        this.allStoresFillRate = 85;
+        // FIXED: Set to 0% when there's valid data but no store orders
+        this.allStoresFillRate = 0;
         this.fillRateTrend = 0;
         return;
       }
@@ -658,12 +666,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
       
     } catch (error) {
       console.error('Error calculating all stores fill rate:', error);
-      this.allStoresFillRate = 85;
+      // FIXED: Set to 0% on error as well
+      this.allStoresFillRate = 0;
       this.fillRateTrend = 0;
     }
   }
 
   calculateFillRateTrend(): number {
+    // If fill rate is 0%, trend should also be 0
+    if (this.allStoresFillRate === 0) {
+      return 0;
+    }
     return Math.floor(Math.random() * 10) - 5;
   }
 
@@ -676,15 +689,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
       );
       
       if (!weeklyData || weeklyData.length === 0) {
-        this.storesReporting = 9;
+        this.storesReporting = 0; // Changed from 9 to 0 when no data
         return;
       }
       
-      this.storesReporting = 9;
+      // Calculate actual stores reporting from data
+      const uniqueStores = new Set(weeklyData.map((item: WeeklyReportItem) => item.store));
+      this.storesReporting = uniqueStores.size;
       
     } catch (error) {
       console.error('Error calculating stores reporting:', error);
-      this.storesReporting = 9;
+      this.storesReporting = 0; // Changed from 9 to 0 on error
     }
   }
 
@@ -831,12 +846,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getFillRateClass(fillRate: number): string {
+    // Handle 0% case specially
+    if (fillRate === 0) return 'neutral';
+    
     if (fillRate >= 85) return 'positive';
     if (fillRate >= 70) return 'neutral';
     return 'negative';
   }
 
   getFillRateStatus(fillRate: number): string {
+    if (fillRate === 0) return 'No Data';
     if (fillRate >= 90) return 'Excellent';
     if (fillRate >= 80) return 'Good';
     if (fillRate >= 70) return 'Fair';
@@ -844,12 +863,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getStatusClass(): string {
+    if (this.allStoresFillRate === 0) return 'inactive'; // Added inactive class for 0%
     if (this.allStoresFillRate >= 85) return 'active';
     if (this.allStoresFillRate >= 70) return 'warning';
     return 'error';
   }
 
   getStatusText(): string {
+    if (this.allStoresFillRate === 0) return 'No Data';
     if (this.allStoresFillRate >= 85) return 'Optimal';
     if (this.allStoresFillRate >= 70) return 'Fair';
     return 'Needs Attention';
@@ -860,7 +881,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return ((value / this.maxActualRawMat) * 100) + '%';
   }
 
-  // ===== UPDATED WORD EXPORT METHODS WITH BALANCED MARGINS =====
+  // ===== WORD EXPORT METHODS =====
 
   async exportEntireDashboardToWord() {
     if (this.isLoading) {

@@ -12,61 +12,45 @@ import { AuthService } from '../services/auth.service';
 })
 export class LoginComponent {
   username: string = 'admin';
-  password: string = 'admin';
+  password: string = '';
   loading: boolean = false;
-  showToast: boolean = false;
-  toastMessage: string = '';
-  toastType: 'success' | 'error' | 'info' = 'info';
+  errorMessage: string = '';
 
   constructor(
     private router: Router,
     private authService: AuthService
   ) {}
 
-  showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
-    this.toastMessage = message;
-    this.toastType = type;
-    this.showToast = true;
-    
-    // Auto-hide after 4 seconds
-    setTimeout(() => {
-      this.showToast = false;
-    }, 4000);
-  }
-
-  hideToast() {
-    this.showToast = false;
+  clearError() {
+    this.errorMessage = '';
   }
 
   async onSubmit(): Promise<void> {
+    // Clear previous errors
+    this.clearError();
+    
     if (!this.username || !this.password) {
-      this.showToastMessage('Please enter both username and password', 'error');
+      this.errorMessage = 'Please enter both username and password';
       return;
     }
 
     this.loading = true;
-    
+
     try {
       const result = await this.authService.login(this.username, this.password);
       
       if (result.success) {
-        this.showToastMessage('Login successful! Redirecting...', 'success');
+        // Login successful - redirect
         setTimeout(() => {
           this.router.navigate(['/dashboard']);
-        }, 1000);
+        }, 300);
       } else {
-        this.showToastMessage(result.error || 'Invalid username or password', 'error');
+        // Login failed - show error
+        this.errorMessage = result.error || 'Invalid username or password';
       }
     } catch (error: any) {
-      console.error('Login error:', error);
-      
-      if (error.message?.includes('Failed to fetch')) {
-        this.showToastMessage('Cannot connect to server. Please check your connection.', 'error');
-      } else if (error.message?.includes('timeout')) {
-        this.showToastMessage('Connection timeout. Please try again.', 'error');
-      } else {
-        this.showToastMessage('Login failed. Please try again.', 'error');
-      }
+      console.error('Login component error:', error);
+      this.errorMessage = 'Login failed. Please try again.';
     } finally {
       this.loading = false;
     }

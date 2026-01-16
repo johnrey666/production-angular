@@ -118,6 +118,10 @@ export class ProductionComponent implements OnInit, OnDestroy {
   monthlySearchQuery = '';
   isDataLoadedFromStorage = false; // Track if data is from localStorage
   
+  // Delete Modals
+  showDeleteAllModal = false;
+  showClearMonthlyModal = false;
+  
   // Snackbar
   snackbarMessage = '';
   snackbarType: 'success' | 'error' | 'warning' | 'info' = 'success';
@@ -184,6 +188,155 @@ export class ProductionComponent implements OnInit, OnDestroy {
     }
     if (this.snackbarTimeout) {
       clearTimeout(this.snackbarTimeout);
+    }
+  }
+
+  // === DELETE FUNCTIONALITY METHODS ===
+
+  // Check if current date has any data
+  hasDataForCurrentDate(): boolean {
+    return this.entries.some(entry => 
+      entry.orderKg > 0 || 
+      entry.recipe.skus.some(sku => sku.actualOutput > 0 || sku.rawMatCost > 0) ||
+      entry.recipe.premixes.some(premix => premix.actualOutput > 0 || premix.rawMatCost > 0)
+    );
+  }
+
+  // Get count of entries with data
+  getEntriesWithDataCount(): number {
+    return this.entries.filter(entry => 
+      entry.orderKg > 0 || 
+      entry.recipe.skus.some(sku => sku.actualOutput > 0 || sku.rawMatCost > 0) ||
+      entry.recipe.premixes.some(premix => premix.actualOutput > 0 || premix.rawMatCost > 0)
+    ).length;
+  }
+
+  // Delete All Records for current date
+  async deleteAllRecords() {
+    if (!this.hasDataForCurrentDate()) {
+      this.showSnackbar('No data to delete for this date', 'warning');
+      return;
+    }
+    this.showDeleteAllModal = true;
+  }
+
+  // Clear all monthly records
+  async clearAllMonthlyRecords() {
+    if (this.monthlyTotal === 0) {
+      this.showSnackbar('No monthly data to clear', 'warning');
+      return;
+    }
+    this.showClearMonthlyModal = true;
+  }
+
+  // Confirm Delete All
+  async confirmDeleteAll() {
+    this.isLoading = true;
+    this.loadingMessage = 'Deleting all records...';
+    
+    try {
+      // Delete all logs for the current date
+      await this.supabase.deleteProductionLogsByDate(this.selectedDate);
+      
+      // Clear localStorage
+      this.clearLocalStorage();
+      
+      // Reset all entries to default
+      this.entries.forEach(entry => {
+        entry.orderKg = 0;
+        entry.recipe.skus.forEach(sku => {
+          sku.actualOutput = 0;
+          sku.variance = 0;
+          sku.rawMatCost = 0;
+          sku.remark = '';
+        });
+        entry.recipe.premixes.forEach(premix => {
+          premix.actualOutput = 0;
+          premix.variance = 0;
+          premix.rawMatCost = 0;
+          premix.remark = '';
+        });
+      });
+      
+      // Update filtered entries
+      this.filteredEntries = [...this.entries];
+      
+      // Show success message
+      this.showSnackbar(`All records for ${this.selectedDate} have been deleted`, 'success');
+      
+      // Reload calendar data
+      await this.loadMonthlyTotal();
+      
+    } catch (error: any) {
+      console.error('Error deleting all records:', error);
+      this.showSnackbar('Failed to delete records', 'error');
+    } finally {
+      this.isLoading = false;
+      this.showDeleteAllModal = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // Confirm Clear All Monthly Records
+  async confirmClearMonthly() {
+    this.isLoading = true;
+    this.loadingMessage = 'Clearing monthly records...';
+    
+    try {
+      // Get start and end dates for current month
+      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
+      const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+      const endDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+      
+      // Delete all logs for the month
+      await this.supabase.deleteProductionLogsByDateRange(startDate, endDate);
+      
+      // Clear localStorage for all dates in the month
+      this.clearLocalStorageForMonth();
+      
+      // Reload monthly data
+      await this.loadMonthlyData();
+      
+      // Show success message
+      this.showSnackbar(`All records for ${this.getMonthName(this.currentMonth)} ${this.currentYear} have been cleared`, 'success');
+      
+      // Reload calendar data
+      await this.loadMonthlyTotal();
+      
+    } catch (error: any) {
+      console.error('Error clearing monthly records:', error);
+      this.showSnackbar('Failed to clear monthly records', 'error');
+    } finally {
+      this.isLoading = false;
+      this.showClearMonthlyModal = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  // Cancel Delete All
+  cancelDeleteAll() {
+    this.showDeleteAllModal = false;
+  }
+
+  // Cancel Clear Monthly
+  cancelClearMonthly() {
+    this.showClearMonthlyModal = false;
+  }
+
+  // Clear localStorage for all dates in current month
+  private clearLocalStorageForMonth() {
+    try {
+      // Get all dates in the current month
+      const startDate = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-01`;
+      const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+      
+      for (let day = 1; day <= lastDay; day++) {
+        const dateStr = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const key = `production_${dateStr}`;
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      console.error('Error clearing localStorage for month:', error);
     }
   }
 
