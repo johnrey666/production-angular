@@ -5,43 +5,45 @@
       <p>Production Management System</p>
     </div>
 
-    <!-- Simple Error Message -->
-    @if (errorMessage) {
-      <div class="error-alert">
-        <div class="error-content">
-          <span class="error-icon">✗</span>
-          <span>{{errorMessage}}</span>
-        </div>
-        <button class="error-close" (click)="clearError()">×</button>
+
+    <!-- Toast Message -->
+    @if (showToast) {
+      <div 
+        class="toast-message {{toastType}}" 
+        (click)="hideToast()"
+      >
+        <span class="toast-icon">
+          @if (toastType === 'success') { ✓ }
+          @if (toastType === 'error') { ✗ }
+          @if (toastType === 'info') { ℹ }
+        </span>
+        <span class="toast-text">{{toastMessage}}</span>
+        <button class="toast-close" (click)="hideToast()">×</button>
       </div>
     }
 
     <form #loginForm="ngForm" (ngSubmit)="onSubmit()">
       <div class="input-group">
-        <label for="username">Username</label>
         <input
-          id="username"
           type="text"
-          placeholder="Enter username"
+          placeholder="Username"
           required
           [(ngModel)]="username"
           name="username"
           [disabled]="loading"
-          autocomplete="username"
+          [class.loading]="loading"
         >
       </div>
 
       <div class="input-group">
-        <label for="password">Password</label>
         <input
-          id="password"
           type="password"
-          placeholder="Enter password"
+          placeholder="Password"
           required
           [(ngModel)]="password"
           name="password"
           [disabled]="loading"
-          autocomplete="current-password"
+          [class.loading]="loading"
         >
       </div>
 
@@ -49,17 +51,18 @@
         type="submit" 
         class="signin-btn" 
         [disabled]="!loginForm.form.valid || loading"
+        [class.loading]="loading"
       >
-        @if (loading) {
-          <span class="btn-loading">Signing in...</span>
-        } @else {
+        @if (!loading) {
           <span>Sign In</span>
         }
+        @if (loading) {
+          <div class="loading-spinner">
+            <div class="spinner"></div>
+            <span>Signing in...</span>
+          </div>
+        }
       </button>
-
-      <div class="demo-note">
-        <small>Demo: <strong>admin</strong> / <strong>admin</strong></small>
-      </div>
     </form>
 
     <div class="footer">
