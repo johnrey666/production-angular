@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 import * as XLSX from 'xlsx';
-import * as docx from 'docx';
 import { saveAs } from 'file-saver';
 import { SupabaseService } from '../services/supabase.service';
 import { Router, NavigationEnd } from '@angular/router';
@@ -881,7 +880,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return ((value / this.maxActualRawMat) * 100) + '%';
   }
 
-  // ===== WORD EXPORT METHODS =====
+  // ===== WORD EXPORT METHODS - UPDATED TO FIX VERCEL ERROR =====
 
   async exportEntireDashboardToWord() {
     if (this.isLoading) {
@@ -899,8 +898,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
       // Get all data that's currently displayed
       const dashboardData = this.getDashboardDataForExport();
       
+      // Dynamically import docx only when needed - THIS FIXES THE VERCEL ERROR
+      let docx;
+      try {
+        // Try to dynamically import docx - this works around the Node.js module issue
+        const docxModule = await import('docx');
+        docx = docxModule;
+      } catch (error) {
+        console.error('Failed to load docx module:', error);
+        
+        // Fallback: Create a simple text file instead
+        this.createFallbackWordExport(dashboardData);
+        return;
+      }
+      
       // Create document
-      const doc = await this.createCompleteDashboardDocument(dashboardData);
+      const doc = await this.createCompleteDashboardDocument(dashboardData, docx);
       
       this.wordExportProgress = 80;
       this.cdr.detectChanges();
@@ -1005,7 +1018,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   // Create complete dashboard document with BALANCED margins
-  private async createCompleteDashboardDocument(data: any): Promise<docx.Document> {
+  private async createCompleteDashboardDocument(data: any, docx: any): Promise<any> {
     const {
       header,
       summaryStats,
@@ -1921,6 +1934,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.wordExportProgress = 30;
       this.cdr.detectChanges();
 
+      // Dynamically import docx only when needed
+      let docx;
+      try {
+        const docxModule = await import('docx');
+        docx = docxModule;
+      } catch (error) {
+        console.error('Failed to load docx module:', error);
+        this.createSimpleTextExport(totals);
+        return;
+      }
+      
       // Create document with BALANCED margins
       const doc = new docx.Document({
         sections: [{
@@ -2250,6 +2274,111 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Fallback method if docx can't be loaded
+  private createFallbackWordExport(data: any) {
+    const textContent = this.createTextReport(data);
+    const blob = new Blob([textContent], { type: 'text/plain' });
+    const fileName = `Dashboard_Report_${this.selectedYear}_${this.selectedMonth.toString().padStart(2, '0')}.txt`;
+    
+    saveAs(blob, fileName);
+    
+    this.wordExportProgress = 100;
+    this.cdr.detectChanges();
+    
+    setTimeout(() => {
+      this.isExportingToWord = false;
+      this.wordExportProgress = 0;
+      this.cdr.detectChanges();
+      alert('Word export not available. Created text file instead.');
+    }, 500);
+  }
+
+  // Create simple text export
+  private createSimpleTextExport(totals: any) {
+    let textContent = `PRODUCTION SUMMARY TABLE\n`;
+    textContent += `Period: ${this.currentMonthYear}\n`;
+    textContent += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n`;
+    
+    textContent += `SKU / MATERIAL\tTYPE\tRAW MATERIAL\tOUTPUT\tVARIANCE\tCOST (₱)\n`;
+    textContent += `------------------------------------------------------------------------\n`;
+    
+    this.filteredMonthlySummary.slice(0, 50).forEach(item => {
+      textContent += `${item.sku}\t${item.type}\t${item.actualRawMat.toFixed(3)}\t${item.actualOutput.toFixed(3)}\t${item.variance.toFixed(3)}\t₱${item.rawMatCost.toFixed(2)}\n`;
+    });
+    
+    textContent += `------------------------------------------------------------------------\n`;
+    textContent += `TOTALS\t\t${totals.rawMat.toFixed(3)}\t${totals.output.toFixed(3)}\t${totals.variance.toFixed(3)}\t₱${totals.cost.toFixed(2)}\n`;
+    
+    const blob = new Blob([textContent], { type: 'text/plain' });
+    const fileName = `Production_Table_${this.selectedYear}_${this.selectedMonth.toString().padStart(2, '0')}.txt`;
+    
+    saveAs(blob, fileName);
+    
+    this.wordExportProgress = 100;
+    this.cdr.detectChanges();
+    
+    setTimeout(() => {
+      this.isExportingToWord = false;
+      this.wordExportProgress = 0;
+      this.cdr.detectChanges();
+      alert('Word export not available. Created text file instead.');
+    }, 500);
+  }
+
+  private createTextReport(data: any): string {
+    const { header, summaryStats, alerts, productionData } = data;
+    
+    let report = "=".repeat(80) + "\n";
+    report += "PRODUCTION DASHBOARD REPORT\n";
+    report += "=".repeat(80) + "\n\n";
+    
+    report += `Report Date: ${header.currentDate}\n`;
+    report += `Reporting Period: ${header.currentMonthYear}\n\n`;
+    
+    report += "KEY PERFORMANCE INDICATORS\n";
+    report += "-".repeat(40) + "\n";
+    report += `Overall Fill Rate: ${summaryStats.fillRate}%\n`;
+    report += `Total Batches: ${summaryStats.totalBatches.toFixed(1)}\n`;
+    report += `Active Recipes: ${summaryStats.totalRecipes}\n`;
+    report += `Active SKUs: ${summaryStats.activeSkus}\n`;
+    report += `Top Product: ${summaryStats.topProductName} (${summaryStats.topProductOrder.toFixed(1)} batches)\n`;
+    report += `Stores Reporting: ${summaryStats.storesReporting}/${summaryStats.totalStores}\n\n`;
+    
+    if (alerts.count > 0) {
+      report += "ALERTS\n";
+      report += "-".repeat(40) + "\n";
+      report += `${alerts.count} Product${alerts.count > 1 ? 's' : ''} with Fill Rate Below 70%\n\n`;
+      alerts.items.forEach((alert: any, index: number) => {
+        report += `${index + 1}. ${alert.sku} - ${alert.store}: ${alert.fillRate}%\n`;
+      });
+      report += "\n";
+    } else {
+      report += "ALERTS: No active alerts\n\n";
+    }
+    
+    report += "PRODUCTION DATA SUMMARY\n";
+    report += "-".repeat(40) + "\n";
+    report += `Total Items: ${productionData.pagination.totalItems}\n`;
+    if (productionData.searchTerm) {
+      report += `Filter: "${productionData.searchTerm}"\n`;
+    }
+    report += `Raw Material Total: ${productionData.totals.rawMat.toFixed(3)}\n`;
+    report += `Output Total: ${productionData.totals.output.toFixed(3)}\n`;
+    report += `Variance Total: ${productionData.totals.variance.toFixed(3)}\n`;
+    report += `Cost Total: ₱${productionData.totals.cost.toFixed(2)}\n\n`;
+    
+    report += "VARIANCE ANALYSIS\n";
+    report += "-".repeat(40) + "\n";
+    report += "• Positive Variance (Output > Input): Efficient production\n";
+    report += "• Negative Variance (Output < Input): Inefficient production\n";
+    report += "• Zero Variance (Output = Input): Perfect utilization\n\n";
+    
+    report += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n`;
+    report += "=".repeat(80);
+    
+    return report;
+  }
+
   cancelWordExport() {
     this.isExportingToWord = false;
     this.wordExportProgress = 0;
@@ -2358,7 +2487,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const monthStr = this.selectedMonth.toString().padStart(2, '0');
       const fileName = `Production_Summary_${this.selectedYear}-${monthStr}.xlsx`;
       
-      XLSX.writeFile(wb, fileName);
+    XLSX.writeFile(wb, fileName);
       console.log(`Exported ${this.filteredMonthlySummary.length} items to Excel`);
 
     } catch (error) {

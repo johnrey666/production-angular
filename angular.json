@@ -28,7 +28,15 @@
             "styles": [
               "src/styles.css"
             ],
-            "outputMode": "static"  
+            "outputMode": "static",
+            "allowedCommonJsDependencies": [
+              "docx",
+              "buffer",
+              "process",
+              "util",
+              "stream",
+              "events"
+            ]
           },
           "configurations": {
             "production": {
